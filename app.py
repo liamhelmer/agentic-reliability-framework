@@ -1,152 +1,160 @@
 import os
 import random
-import datetime
+import time
+import pandas as pd
 import numpy as np
 import gradio as gr
-import requests
+import torch
 from sentence_transformers import SentenceTransformer
 import faiss
+import requests
+from dotenv import load_dotenv
 
-# === Hugging Face Token (auto pulled from secrets) ===
-HF_API_TOKEN = os.getenv("HF_API_TOKEN")
+# ========================
+# Initialization
+# ========================
+load_dotenv()
 
-# === In-memory store for events ===
-recent_events = []
+HF_API_TOKEN = (os.getenv("HF_API_TOKEN") or "").strip()
+HF_INFERENCE_ENDPOINT = "https://api-inference.huggingface.co/models/distilbert-base-uncased"
 
-# === Vector-based post-incident memory ===
-embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
-dimension = 384  # embedding size
-index = faiss.IndexFlatL2(dimension)
-incident_texts = []  # metadata for recall
+# fallback in case the token isn't available
+if not HF_API_TOKEN:
+    print("⚠️ Warning: No HF_API_TOKEN found — using read-only mode (no inference calls).")
 
-# === Helper: store + recall similar anomalies ===
-def store_incident_vector(event, analysis):
-    """Embed and store context of each anomaly."""
-    context = f"Component: {event['component']} | Latency: {event['latency']} | ErrorRate: {event['error_rate']} | Analysis: {analysis}"
-    embedding = embedding_model.encode(context)
-    index.add(np.array([embedding]).astype('float32'))
-    incident_texts.append(context)
+# Vector memory setup
+embedder = SentenceTransformer("all-MiniLM-L6-v2")
+embedding_dim = 384
+index = faiss.IndexFlatL2(embedding_dim)
+incident_memory = []  # stores {vector, metadata}
 
-def find_similar_incidents(event):
-    """Return top-3 similar incidents (if exist)."""
-    if index.ntotal == 0:
-        return []
-    query = f"Component: {event['component']} | Latency: {event['latency']} | ErrorRate: {event['error_rate']}"
-    q_embed = embedding_model.encode(query)
-    D, I = index.search(np.array([q_embed]).astype('float32'), 3)
-    results = [incident_texts[i] for i in I[0] if i < len(incident_texts)]
-    return results
+# Helper: create embeddings
+def embed_text(text):
+    vector = embedder.encode([text], convert_to_numpy=True)
+    return vector
 
-# === Hugging Face Inference API (for text analysis simulation) ===
-def analyze_event_with_hf(event):
+# ========================
+# Core Functions
+# ========================
+def detect_anomaly(event):
+    """Simple adaptive anomaly detection."""
+    # Random anomaly forcing for test verification
+    force_anomaly = random.random() < 0.25  # 25% of events become anomalies automatically
+    if force_anomaly or event["latency"] > 150 or event["error_rate"] > 0.05:
+        return "Anomaly"
+    return "Normal"
+
+def analyze_with_hf_api(text):
+    """Call Hugging Face Inference API safely."""
+    if not HF_API_TOKEN:
+        return "⚠️ No API token — running offline simulation."
+    headers = {"Authorization": f"Bearer {HF_API_TOKEN}"}
     try:
-        headers = {"Authorization": f"Bearer {HF_API_TOKEN}"}
-        payload = {
-            "inputs": f"Analyze system reliability for component {event['component']} with latency {event['latency']} and error rate {event['error_rate']}."
-        }
         response = requests.post(
-            "https://api-inference.huggingface.co/models/distilbert-base-uncased",
+            HF_INFERENCE_ENDPOINT,
             headers=headers,
-            json=payload,
-            timeout=10
+            json={"inputs": text},
+            timeout=5
         )
         if response.status_code == 200:
-            return response.json()
+            result = response.json()
+            if isinstance(result, list):
+                return result[0].get("label", "No label")
+            return str(result)
         else:
-            return f"Error generating analysis: {response.text}"
+            return f"Error {response.status_code}: {response.text}"
     except Exception as e:
-        return f"Error generating analysis: {str(e)}"
+        return f"Error generating analysis: {e}"
 
-# === Forced anomaly toggle logic ===
-run_counter = 0
-def force_anomaly():
-    global run_counter
-    run_counter += 1
-    # Every 3rd run will be forced to trigger an anomaly
-    return run_counter % 3 == 0
+def simulate_healing(event):
+    """Simulate automated remediation based on anomaly context."""
+    actions = [
+        "Restarted container",
+        "Scaled up pods",
+        "Cleared queue backlog",
+        "Purged cache and retried"
+    ]
+    if event["status"] == "Anomaly":
+        return random.choice(actions)
+    return "-"
 
-# === Generate Telemetry Event ===
-def simulate_event():
-    components = ["api-service", "data-ingestor", "model-runner", "queue-worker"]
+def add_to_vector_memory(event):
+    """Store event context in FAISS for post-incident learning."""
+    text = f"Component: {event['component']} | Latency: {event['latency']} | ErrorRate: {event['error_rate']} | Analysis: {event['analysis']}"
+    vector = embed_text(text)
+    index.add(vector)
+    incident_memory.append({
+        "vector": vector,
+        "metadata": text
+    })
+    return len(incident_memory)
+
+def find_similar_events(event, top_k=3):
+    """Find semantically similar past incidents."""
+    if len(incident_memory) < 3:
+        return "Not enough incidents stored yet."
+    text = f"Component: {event['component']} | Latency: {event['latency']} | ErrorRate: {event['error_rate']} | Analysis: {event['analysis']}"
+    query_vec = embed_text(text)
+    distances, indices = index.search(query_vec, top_k)
+    results = [incident_memory[i]["metadata"] for i in indices[0] if i < len(incident_memory)]
+    return f"Found {len(results)} similar incidents (e.g., {results[0][:100]}...)." if results else "No matches found."
+
+# ========================
+# Event Handling
+# ========================
+events = []
+
+def process_event(component, latency, error_rate):
     event = {
-        "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "component": random.choice(components),
-        "latency": round(random.uniform(50, 350), 2),
-        "error_rate": round(random.uniform(0.01, 0.2), 3),
-    }
-    return event
-
-# === Main processing logic ===
-def process_event():
-    event = simulate_event()
-
-    # === Adaptive thresholding + forced anomaly ===
-    is_forced = force_anomaly()
-    if is_forced or event["latency"] > 150 or event["error_rate"] > 0.05:
-        status = "Anomaly"
-        analysis = analyze_event_with_hf(event)
-        store_incident_vector(event, str(analysis))
-
-        # AI-driven "self-healing" simulation
-        healing_action = "Restarted container" if random.random() < 0.3 else "No actionable step detected."
-
-        # Check similarity with past incidents
-        similar = find_similar_incidents(event)
-        if similar:
-            healing_action += f" Found {len(similar)} similar incidents (e.g., {similar[0][:80]}...)."
-
-    else:
-        status = "Normal"
-        analysis = "-"
-        healing_action = "-"
-
-    event_record = {
-        "timestamp": event["timestamp"],
-        "component": event["component"],
-        "latency": event["latency"],
-        "error_rate": event["error_rate"],
-        "analysis": analysis,
-        "status": status,
-        "healing_action": healing_action
+        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "component": component,
+        "latency": float(latency),
+        "error_rate": float(error_rate),
     }
 
-    recent_events.append(event_record)
-    if len(recent_events) > 20:
-        recent_events.pop(0)
+    event["status"] = detect_anomaly(event)
+    event["analysis"] = analyze_with_hf_api(f"{component} latency={latency}, error={error_rate}")
+    event["healing_action"] = simulate_healing(event)
 
-    return (
-        f"✅ Event Processed ({status})",
-        gr.update(value=create_table(recent_events))
-    )
+    # Vector memory & similarity learning
+    add_to_vector_memory(event)
+    event["healing_action"] += " " + find_similar_events(event)
 
-# === Display helper for Gradio ===
-def create_table(events):
-    if not events:
-        return "No events yet."
-    headers = list(events[0].keys())
-    table = "<table><tr>" + "".join(f"<th>{h}</th>" for h in headers) + "</tr>"
-    for e in events:
-        table += "<tr>" + "".join(f"<td>{e[h]}</td>" for h in headers) + "</tr>"
-    table += "</table>"
-    return table
+    events.append(event)
+    if len(events) > 20:
+        events.pop(0)
 
-# === Gradio UI ===
-with gr.Blocks(theme=gr.themes.Soft()) as demo:
-    gr.Markdown("## 🧠 Agentic Reliability Framework MVP")
-    gr.Markdown("Adaptive anomaly detection + AI-driven self-healing + vector memory")
+    df = pd.DataFrame(events)
+    return "✅ Event Processed", df
+
+# ========================
+# Gradio UI
+# ========================
+with gr.Blocks(title="Agentic Reliability Framework MVP") as demo:
+    gr.Markdown("## 🧠 Agentic Reliability Framework MVP\nAdaptive anomaly detection + AI-driven self-healing + vector memory")
 
     with gr.Row():
-        submit_btn = gr.Button("🚀 Submit Telemetry Event", variant="primary")
+        component_input = gr.Dropdown(
+            ["api-service", "data-ingestor", "queue-worker", "model-runner"],
+            label="Component",
+            value="api-service"
+        )
+        latency_input = gr.Number(label="Latency (ms)", value=random.uniform(50, 200))
+        error_input = gr.Number(label="Error Rate", value=random.uniform(0.01, 0.15))
 
-    detection_output = gr.Textbox(label="Detection Output", interactive=False)
-    recent_table = gr.HTML(label="Recent Events (Last 20)", value="No events yet.")
+    submit_btn = gr.Button("🚀 Submit Telemetry Event")
 
-    submit_btn.click(fn=process_event, outputs=[detection_output, recent_table])
+    output_text = gr.Textbox(label="Detection Output")
+    output_table = gr.Dataframe(headers=["timestamp", "component", "latency", "error_rate", "analysis", "status", "healing_action"], label="Recent Events (Last 20)")
 
-    gr.Markdown("---")
-    gr.Markdown("### Recent Events (Last 20)")
-    gr.Column([recent_table])
+    submit_btn.click(
+        fn=process_event,
+        inputs=[component_input, latency_input, error_input],
+        outputs=[output_text, output_table]
+    )
 
-# === Launch app ===
+# ========================
+# Launch
+# ========================
 if __name__ == "__main__":
     demo.launch(server_name="0.0.0.0", server_port=7860)
