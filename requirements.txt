@@ -1,2 +1,24 @@
-gradio==4.44.0
-sqlite-utils==3.35
+# Core web + runtime
+gradio[oauth,mcp]==5.49.1
+uvicorn>=0.14.0
+fastapi>=0.115.0
+
+# Core logic + telemetry
+pandas>=2.2.2
+numpy>=1.26.4
+pydantic~=1.10.13
+
+# Hugging Face + AI
+huggingface-hub>=0.24.5
+hf-transfer>=0.1.4
+transformers>=4.44.2
+torch>=2.4.0
+scikit-learn>=1.5.1
+
+# Optional storage + vector features
+faiss-cpu>=1.8.0
+sentence-transformers>=3.0.1
+
+# Misc
+requests>=2.31.0
+python-dotenv>=1.0.1
