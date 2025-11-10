@@ -223,7 +223,6 @@ with gr.Blocks(title="🧠 Agentic Reliability Framework MVP", theme="soft") as 
             table_output = gr.Dataframe(
                 headers=["timestamp", "component", "latency", "error_rate", "status", "analysis", "healing_action"],
                 label="Event History",
-                height=400,
                 wrap=True
             )
     
