@@ -4,7 +4,6 @@ Adaptive anomaly detection + AI-driven self-healing + persistent FAISS memory fo
 
 The Agentic Reliability Framework (ARF) provides a prototype for self-healing operational intelligence — integrating vector-based observability, adaptive anomaly detection, and cloud inference for autonomous incident handling.
 
-It bridges data pipelines, inference orchestration, and persistent memory — enabling distributed systems to reason about reliability events in real time.
 ---
 title: Agentic Reliability Framework
 emoji: 🧠
@@ -96,6 +95,22 @@ A real-time reliability engineering system that continuously monitors telemetry 
 | **Secure REST API**            | `/add-event` endpoint with API key validation for automation integration          |
 | **Interactive Dashboard**      | Visualizes system events, anomalies, and remediation logs in real time            |
 
+🎯 Use Cases
+Cloud Infrastructure Monitoring - Real-time anomaly detection for microservices
+
+Incident Response - AI-assisted root cause analysis and decision support
+
+Reliability Engineering - Continuous learning from past incidents
+
+DevOps Automation - Self-healing system simulation and validation
+
+💾 Data Persistence
+FAISS Index: incident_vectors.index - Vector embeddings of incidents
+
+JSON Metadata: incident_texts.json - Textual descriptions and metadata
+
+FileLock: Concurrent write safety for multi-user environments
+
 🧠 Example Output
 
 ✅ Event Processed (Anomaly)
@@ -147,6 +162,11 @@ python app.py
 
 Open your browser at: http://localhost:7860
 
+🌐 Live Demo
+Hugging Face Space: Launch Demo
+
+GitHub Repository: Source Code
+
 ⚙️ Code Improvement Plan
 Here’s how to evolve the MVP into a production-ready reliability agent:
 | Focus                           | Next Steps                                                                    | Description                                                                       |
@@ -158,6 +178,9 @@ Here’s how to evolve the MVP into a production-ready reliability agent:
 | **5. Multi-Agent Coordination** | Add a `Coordinator Agent` to manage self-healing priorities                   | Converts reactive healing → proactive orchestration                               |
 | **6. Model Adaptation**         | Swap MiniLM for `all-distilroberta-v1` and test semantic retention            | Improves similarity clustering accuracy                                           |
 | **7. Config & Secrets**         | Use `.env` loader and structured settings via `pydantic.BaseSettings`         | Cleaner configuration management across environments                              |
+
+🤝 Contributing
+This is an active research project exploring agentic reliability patterns. Issues and pull requests are welcome!
 
 🧭 Author
 
