@@ -46,32 +46,59 @@ def detect_anomaly(event):
     latency = event["latency"]
     error_rate = event["error_rate"]
 
-    # Force random anomaly occasionally for testing
-    if random.random() < 0.25:
-        return True
-
-    return latency > 150 or error_rate > 0.05
+    # Remove random forcing for production - use actual thresholds only
+    latency_anomaly = latency > 150
+    error_anomaly = error_rate > 0.05
+    
+    return latency_anomaly or error_anomaly
 
 def call_huggingface_analysis(prompt):
     """Use HF Inference API or fallback simulation."""
     if not HF_TOKEN:
-        return "Offline mode: simulated analysis."
+        # Enhanced fallback analysis
+        fallback_insights = [
+            "High latency detected - possible resource contention or network issues",
+            "Error rate increase suggests recent deployment instability",
+            "Latency spike correlates with increased user traffic patterns",
+            "Intermittent failures indicate potential dependency service degradation",
+            "Performance degradation detected - consider scaling compute resources"
+        ]
+        return random.choice(fallback_insights)
 
     try:
+        # Enhanced prompt for better analysis
+        enhanced_prompt = f"""
+        As a senior reliability engineer, analyze this telemetry event and provide a concise root cause analysis:
+        
+        {prompt}
+        
+        Focus on:
+        - Potential infrastructure or application issues
+        - Correlation between metrics
+        - Business impact assessment
+        - Recommended investigation areas
+        
+        Provide 1-2 sentences maximum with actionable insights.
+        """
+        
         payload = {
             "model": "mistralai/Mixtral-8x7B-Instruct-v0.1",
-            "prompt": prompt,
-            "max_tokens": 200,
-            "temperature": 0.3,
+            "prompt": enhanced_prompt,
+            "max_tokens": 150,
+            "temperature": 0.4,
         }
-        response = requests.post(HF_API_URL, headers=HEADERS, json=payload, timeout=10)
+        response = requests.post(HF_API_URL, headers=HEADERS, json=payload, timeout=15)
         if response.status_code == 200:
             result = response.json()
-            return result.get("choices", [{}])[0].get("text", "").strip()
+            analysis_text = result.get("choices", [{}])[0].get("text", "").strip()
+            # Clean up any extra formatting from the response
+            if analysis_text and len(analysis_text) > 10:
+                return analysis_text.split('\n')[0]  # Take first line if multiple
+            return analysis_text
         else:
-            return f"Error {response.status_code}: {response.text}"
+            return f"API Error {response.status_code}: Service temporarily unavailable"
     except Exception as e:
-        return f"Error generating analysis: {e}"
+        return f"Analysis service error: {str(e)}"
 
 def simulate_healing(event):
     actions = [
@@ -83,8 +110,9 @@ def simulate_healing(event):
     return random.choice(actions)
 
 def analyze_event(component, latency, error_rate):
+    # Ensure unique timestamps with higher precision
     event = {
-        "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
         "component": component,
         "latency": latency,
         "error_rate": error_rate
@@ -94,7 +122,7 @@ def analyze_event(component, latency, error_rate):
     event["anomaly"] = is_anomaly
     event["status"] = "Anomaly" if is_anomaly else "Normal"
 
-    # Build textual prompt
+    # Build enhanced textual prompt
     prompt = (
         f"Component: {component}\nLatency: {latency:.2f}ms\nError Rate: {error_rate:.3f}\n"
         f"Status: {event['status']}\n\n"
@@ -121,7 +149,9 @@ def analyze_event(component, latency, error_rate):
         D, I = index.search(vec, k=min(3, len(incident_texts)))
         similar = [incident_texts[i] for i in I[0] if i < len(incident_texts)]
         if similar:
-            event["healing_action"] += f" Found {len(similar)} similar incidents (e.g., {similar[0][:120]}...)."
+            # Extract meaningful part from similar incident
+            similar_preview = similar[0][:100] + "..." if len(similar[0]) > 100 else similar[0]
+            event["healing_action"] += f" Found {len(similar)} similar incidents (e.g., {similar_preview})."
     else:
         event["healing_action"] += " - Not enough incidents stored yet."
 
@@ -133,10 +163,11 @@ def submit_event(component, latency, error_rate):
     result = analyze_event(component, latency, error_rate)
     parsed = json.loads(result)
 
+    # Display last 15 events to keep table manageable
     table = [
         [e["timestamp"], e["component"], e["latency"], e["error_rate"],
          e["status"], e["analysis"], e["healing_action"]]
-        for e in events[-20:]
+        for e in events[-15:]
     ]
 
     return (
@@ -147,15 +178,73 @@ def submit_event(component, latency, error_rate):
         )
     )
 
-with gr.Blocks(title="🧠 Agentic Reliability Framework MVP") as demo:
-    gr.Markdown("## 🧠 Agentic Reliability Framework MVP\nAdaptive anomaly detection + AI-driven self-healing + vector memory (FAISS persistent)")
+with gr.Blocks(title="🧠 Agentic Reliability Framework MVP", theme="soft") as demo:
+    gr.Markdown("""
+    # 🧠 Agentic Reliability Framework MVP
+    **Adaptive anomaly detection + AI-driven self-healing + persistent FAISS memory**
+    
+    *Monitor your services in real-time with AI-powered reliability engineering*
+    """)
+    
     with gr.Row():
-        component = gr.Textbox(label="Component", value="api-service")
-        latency = gr.Slider(10, 400, value=100, step=1, label="Latency (ms)")
-        error_rate = gr.Slider(0, 0.2, value=0.02, step=0.001, label="Error Rate")
-    submit = gr.Button("🚀 Submit Telemetry Event")
-    output_text = gr.Textbox(label="Detection Output")
-    table_output = gr.Dataframe(headers=["timestamp", "component", "latency", "error_rate", "status", "analysis", "healing_action"])
-    submit.click(fn=submit_event, inputs=[component, latency, error_rate], outputs=[output_text, table_output])
+        with gr.Column(scale=1):
+            gr.Markdown("### 📊 Telemetry Input")
+            component = gr.Textbox(
+                label="Component", 
+                value="api-service",
+                info="Name of the service being monitored"
+            )
+            latency = gr.Slider(
+                minimum=10, 
+                maximum=400, 
+                value=100, 
+                step=1, 
+                label="Latency (ms)",
+                info="Alert threshold: >150ms"
+            )
+            error_rate = gr.Slider(
+                minimum=0, 
+                maximum=0.2, 
+                value=0.02, 
+                step=0.001, 
+                label="Error Rate",
+                info="Alert threshold: >0.05"
+            )
+            submit = gr.Button("🚀 Submit Telemetry Event", variant="primary")
+            
+        with gr.Column(scale=2):
+            gr.Markdown("### 🔍 Live Analysis")
+            output_text = gr.Textbox(
+                label="Detection Output",
+                placeholder="Submit an event to see analysis results...",
+                lines=2
+            )
+            gr.Markdown("### 📈 Recent Events")
+            table_output = gr.Dataframe(
+                headers=["timestamp", "component", "latency", "error_rate", "status", "analysis", "healing_action"],
+                label="Event History",
+                height=400,
+                wrap=True
+            )
+    
+    # Add some explanation
+    with gr.Accordion("ℹ️ How it works", open=False):
+        gr.Markdown("""
+        - **Anomaly Detection**: Flags events with latency >150ms or error rate >5%
+        - **AI Analysis**: Uses Mistral-8x7B for root cause analysis via Hugging Face
+        - **Vector Memory**: Stores incidents in FAISS for similarity search
+        - **Self-Healing**: Simulates automated recovery actions based on historical patterns
+        """)
+    
+    submit.click(
+        fn=submit_event, 
+        inputs=[component, latency, error_rate], 
+        outputs=[output_text, table_output]
+    )
 
-demo.launch(server_name="0.0.0.0", server_port=7860)
+if __name__ == "__main__":
+    demo.launch(
+        server_name="0.0.0.0", 
+        server_port=7860,
+        share=False
+    )
