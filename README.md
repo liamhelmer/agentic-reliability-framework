@@ -1,179 +1,141 @@
-🧠 Agentic Reliability Framework
-
-Adaptive anomaly detection + AI-driven self-healing + persistent FAISS memory for reliability-aware systems.
-
-The Agentic Reliability Framework (ARF) provides a prototype for self-healing operational intelligence — integrating vector-based observability, adaptive anomaly detection, and cloud inference for autonomous incident handling.
-
-**Autonomous detect → diagnose → heal reliability framework** with adaptive anomaly detection, AI-driven root cause analysis, and persistent vector memory for cloud infrastructure.
-
+---
+title: Agentic Reliability Framework
+emoji: 🧠
+colorFrom: blue
+colorTo: purple
+sdk: gradio
+sdk_version: "4.44.1"
+app_file: app.py
+pinned: false
+license: mit
+short_description: AI-powered reliability with multi-agent anomaly detection
 ---
 
-## 🚀 Overview
+# 🧠 Agentic Reliability Framework
 
-A real-time reliability engineering system that continuously monitors telemetry data, detects anomalies using adaptive thresholds, performs AI-powered root cause analysis, and simulates self-healing actions with persistent memory of past incidents.
+**AI-Powered System Reliability with Multi-Agent Anomaly Detection & Auto-Healing**
 
----
+## 🚀 Live Demo
 
-## 🛠️ Core Features
+**Try it now!** Enter system telemetry data and watch specialized AI agents analyze, diagnose, and recommend healing actions in real-time.
 
-| Feature | Description |
-|---------|-------------|
-| **🔍 Adaptive Anomaly Detection** | Dynamic threshold-based detection with latency (>150ms) and error rate (>5%) monitoring |
-| **🧠 AI Root Cause Analysis** | Integration with Mistral-8x7B via Hugging Face Inference API for intelligent incident analysis |
-| **💾 Vector Memory (FAISS)** | Persistent storage of incident embeddings using sentence-transformers for similarity search |
-| **⚡ Self-Healing Simulation** | Automated corrective actions (restart, scale, clear backlog) with historical context |
-| **📊 Real-time Dashboard** | Gradio UI for telemetry submission and incident visualization |
-| **🔐 Secure API** | FastAPI backend with environment-based configuration |
+## 🎯 What It Does
 
----
+This framework transforms traditional monitoring into **autonomous reliability engineering**:
 
-## 🏗️ Architecture
-                   ┌──────────────────────────────┐
-                   │        Gradio UI (Web)        │
-                   │  ──── Real-time telemetry ─── │
-                   └──────────────┬────────────────┘
-                                  │
-                                  ▼
-                   ┌──────────────────────────────┐
-                   │       FastAPI Endpoint        │
-                   │    /add-event + API Key Auth   │
-                   └──────────────┬────────────────┘
-                                  │
-                                  ▼
-                   ┌──────────────────────────────┐
-                   │  Hugging Face Router API       │
-                   │  Mixtral-8x7B → Root Cause NLP │
-                   └──────────────┬────────────────┘
-                                  │
-                                  ▼
-                   ┌──────────────────────────────┐
-                   │  FAISS + Sentence Transformers│
-                   │  Persistent Memory & Similarity│
-                   └──────────────┬────────────────┘
-                                  │
-                                  ▼
-                   ┌──────────────────────────────┐
-                   │  Adaptive Healing Simulation   │
-                   │ (Scale, Restart, Queue Clear)  │
-                   └──────────────────────────────┘
-                   
-⚙️ Tech Stack
+- **🤖 Multi-Agent AI Analysis**: Specialized agents work together to detect and diagnose issues
+- **🔧 Automated Healing**: Policy-based auto-remediation for common failures
+- **💰 Business Impact**: Real-time revenue and user impact calculations
+- **📚 Learning System**: FAISS-powered memory learns from every incident
+- **⚡ Production Ready**: Circuit breakers, adaptive thresholds, enterprise features
 
-| Layer                 | Component                                                     | Description                                                             |
-| --------------------- | ------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| **UI / Control**      | `Gradio 5.49.1`                                               | Interactive telemetry dashboard for real-time anomaly visualization     |
-| **Inference Gateway** | `Hugging Face Router API (Mixtral 8x7B Instruct)`             | Contextual incident analysis via dynamic inference routing              |
-| **Memory Layer**      | `FAISS + Sentence Transformers (all-MiniLM-L6-v2)`            | Persistent semantic memory of past incidents for retrieval & clustering |
-| **API Layer**         | `FastAPI + Starlette`                                         | RESTful telemetry ingestion (`/add-event`) with `X-API-Key` security    |
-| **Runtime**           | `Python 3.10` + `NumPy`, `Pandas`, `Scikit-learn`, `Tenacity` | Adaptive computation and fault tolerance                                |
-| **Deployment**        | GitHub Codespaces / Hugging Face Spaces                       | Containerized, GPU-optional environment for live experimentation        |
+## 🛠️ Quick Start
 
-🚀 Features
+### 1. Select a Service
+Choose from: `api-service`, `auth-service`, `payment-service`, `database`, `cache-service`
 
-| Capability                     | Description                                                                       |
-| ------------------------------ | --------------------------------------------------------------------------------- |
-| **Adaptive Anomaly Detection** | Dynamically learns thresholds from latency & error-rate signals                   |
-| **AI Root Cause Analysis**     | Integrates with Mixtral-8x7B via Hugging Face Router for context-rich diagnostics |
-| **Self-Healing Simulation**    | Executes adaptive healing routines (restart, scale, clear queue)                  |
-| **Persistent FAISS Memory**    | Stores embeddings of incidents for cross-similarity search                        |
-| **Secure REST API**            | `/add-event` endpoint with API key validation for automation integration          |
-| **Interactive Dashboard**      | Visualizes system events, anomalies, and remediation logs in real time            |
+### 2. Adjust Metrics
+- **Latency P99**: Alert threshold >150ms (adaptive)
+- **Error Rate**: Alert threshold >0.05 (5%)
+- **Throughput**: Current requests per second
+- **CPU/Memory**: Utilization (0.0-1.0 scale)
 
-🎯 Use Cases
-Cloud Infrastructure Monitoring - Real-time anomaly detection for microservices
+### 3. Submit & Analyze
+Click **"Submit Telemetry Event"** to see AI agents in action!
 
-Incident Response - AI-assisted root cause analysis and decision support
+## 📊 Example Test Cases
 
-Reliability Engineering - Continuous learning from past incidents
-
-DevOps Automation - Self-healing system simulation and validation
-
-💾 Data Persistence
-FAISS Index: incident_vectors.index - Vector embeddings of incidents
-
-JSON Metadata: incident_texts.json - Textual descriptions and metadata
-
-FileLock: Concurrent write safety for multi-user environments
-
-🧠 Example Output
-
-✅ Event Processed (Anomaly)
-
+### 🚨 Critical Failure
 Component: api-service
-Latency: 224 ms
-Error Rate: 0.062
-Status: Anomaly
-Analysis: Error 404 - Missing upstream dependency
-Healing Action: Restarted container (Found 3 similar incidents)
+Latency: 800ms
+Error Rate: 0.25
+CPU: 0.95
+Memory: 0.90
 
-🧾 API Usage
+text
+*Expected: CRITICAL severity, circuit_breaker + scale_out actions*
 
-Endpoint
+### ⚠️ Performance Issue
+Component: auth-service
+Latency: 350ms
+Error Rate: 0.08
+CPU: 0.75
+Memory: 0.65
 
-POST /add-event
+text
+*Expected: HIGH severity, traffic_shift action*
 
-Headers
+### ✅ Normal Operation
+Component: payment-service
+Latency: 120ms
+Error Rate: 0.02
+CPU: 0.45
+Memory: 0.35
 
-X-API-Key: <your_api_key>
+text
+*Expected: NORMAL status, no actions needed*
 
-Body
+## 🔧 Technical Features
 
-{
-  "component": "api-service",
-  "latency": 200,
-  "error_rate": 0.04
-}
+### Multi-Agent Architecture
+- **🕵️ Detective Agent**: Anomaly detection & pattern recognition
+- **🔍 Diagnostician Agent**: Root cause analysis & investigation
+- **🤖 Orchestration Manager**: Coordinates all agents in parallel
 
-Response
+### Smart Detection
+- Adaptive thresholds that learn from your environment
+- Multi-dimensional anomaly scoring (0-100% confidence)
+- Correlation analysis across metrics
+- FAISS vector memory for incident similarity
 
-{
-  "status": "ok",
-  "event": {
-    "timestamp": "2025-11-09 21:14:03",
-    "component": "api-service",
-    "status": "Anomaly",
-    "analysis": "Error 404: Not Found",
-    "healing_action": "Restarted container (Found 3 similar incidents)"
-  }
-}
+### Business Intelligence
+- Real-time revenue impact calculations
+- User impact estimation  
+- Severity classification (LOW, MEDIUM, HIGH, CRITICAL)
 
-🧩 Quickstart
+## 🎮 Try These Scenarios
 
-git clone https://github.com/petterjuan/agentic-reliability-framework.git
-cd agentic-reliability-framework
-pip install -r requirements.txt
-python app.py
+### Test 1: Resource Exhaustion
+Set CPU to 0.95 and Memory to 0.95 - watch scale_out actions trigger
 
-Open your browser at: http://localhost:7860
+### Test 2: High Latency + Errors  
+Set Latency to 500ms and Error Rate to 0.15 - see circuit breaker activation
 
-🌐 Live Demo
-Hugging Face Space: Launch Demo
+### Test 3: Gradual Degradation
+Start with normal values and slowly increase latency/errors to see adaptive thresholds
 
-GitHub Repository: Source Code
+## 🚨 Default Alert Thresholds
 
-⚙️ Code Improvement Plan
-Here’s how to evolve the MVP into a production-ready reliability agent:
-| Focus                           | Next Steps                                                                    | Description                                                                       |
-| ------------------------------- | ----------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
-| **1. Real-time Feedback Loops** | Integrate WebSocket channels for live anomaly updates in Gradio               | Enables anomaly preemption & operator notifications                               |
-| **2. Distributed Inference**    | Move Hugging Face inference calls behind an async task queue (Celery + Redis) | Prevents blocking and improves fault tolerance                                    |
-| **3. Memory Management**        | Shard FAISS indexes & periodically prune vector memory                        | Keeps inference cost predictable over time                                        |
-| **4. Observability Layer**      | Add Prometheus metrics + Grafana dashboard hooks                              | Enables monitoring of anomaly rates, inference latency, and healing effectiveness |
-| **5. Multi-Agent Coordination** | Add a `Coordinator Agent` to manage self-healing priorities                   | Converts reactive healing → proactive orchestration                               |
-| **6. Model Adaptation**         | Swap MiniLM for `all-distilroberta-v1` and test semantic retention            | Improves similarity clustering accuracy                                           |
-| **7. Config & Secrets**         | Use `.env` loader and structured settings via `pydantic.BaseSettings`         | Cleaner configuration management across environments                              |
+| Metric | Warning | Critical |
+|--------|---------|----------|
+| Latency P99 | >150ms | >300ms |
+| Error Rate | >0.05 | >0.15 |
+| CPU Utilization | >0.8 | >0.9 |
+| Memory Utilization | >0.8 | >0.9 |
 
-🤝 Contributing
-This is an active research project exploring agentic reliability patterns. Issues and pull requests are welcome!
+## 🔮 Roadmap
 
-🧭 Author
+- [ ] Predictive anomaly detection
+- [ ] Multi-cloud coordination  
+- [ ] Advanced root cause analysis
+- [ ] Automated runbook execution
+- [ ] Team learning and knowledge transfer
 
-Juan D. Petter
-AI Engineer & Cloud Architect
-Building Agentic Systems for Scalable Automation | ex-NetApp
-🔗 LinkedIn
- • GitHub
+## 💡 Why This Matters
 
-🪪 License
+> "The most reliable system is the one that fixes itself before anyone notices there was a problem."
 
-MIT License © 2025 Juan D. Petter
+This framework represents the evolution from **reactive monitoring** to **proactive, autonomous reliability engineering**.
+
+## 🛠️ Technical Stack
+
+- **Backend**: Python, FastAPI, Sentence Transformers
+- **AI/ML**: FAISS, Hugging Face, Custom Agents
+- **Frontend**: Gradio
+- **Storage**: FAISS vector database, JSON metadata
+
+---
+
+**Built with ❤️ by [Juan Petter](https://huggingface.co/petter2025)**
+
+*AI Infrastructure Engineer | Building Self-Healing Agentic Systems*

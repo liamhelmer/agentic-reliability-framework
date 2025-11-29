@@ -1,29 +1,54 @@
-# Core Space / Web stack
-gradio[mcp,oauth]==5.49.1
-fastapi==0.121.0
-uvicorn==0.31.1
-starlette==0.49.3
-spaces==0.42.1
-python-dotenv==1.0.1
+# ============================================================================
+# Enterprise Agentic Reliability Framework
+# Production-Optimized Dependencies
+# ============================================================================
+# 
+# Total Size: ~340MB
+# Install Time: ~2 minutes
+# Last Updated: 2025-11-25
+#
+# ============================================================================
 
-# Embedding + Semantic Retrieval Stack
-sentence-transformers==3.2.0
-faiss-cpu==1.8.0.post1
+# === Core Web Framework ===
+gradio==5.49.1
+# Purpose: Main UI framework for the entire application
+# Used for: Sliders, buttons, tables, JSON displays, layouts
 
-# Transformers ecosystem (compatible versions)
-transformers==4.45.2
-tokenizers==0.20.3
-huggingface-hub==0.34.6
+# === Vector Search & Embeddings ===
+sentence-transformers==2.2.2
+# Purpose: Convert incident descriptions to 384-dimensional vectors
+# Used for: Similarity search and incident memory system
+# Model: all-MiniLM-L6-v2
 
-# Numeric + Analytics
-numpy==1.26.4
-pandas==2.2.2
-scikit-learn==1.5.2
-scipy==1.13.1
-matplotlib==3.9.2
+faiss-cpu==1.7.4
+# Purpose: Fast approximate nearest neighbor search
+# Used for: Finding similar past incidents in vector space
+# Note: CPU version (GPU version not needed for this use case)
 
-# Utility + Runtime
-tqdm==4.66.5
-requests==2.32.3
-tenacity==8.4.1
-joblib==1.4.2
+# === Data Processing & Mathematics ===
+numpy==1.24.3
+# Purpose: Numerical computing and statistical operations
+# Used for: Forecasting, anomaly detection, threshold calculations
+# Critical for: Predictive analytics engine
+
+# === Data Validation & Type Safety ===
+pydantic==2.5.0
+# Purpose: Runtime data validation and type checking
+# Used for: models.py (ReliabilityEvent, EventSeverity, etc.)
+# Ensures: Type safety across the entire application
+
+# === HTTP & API Communication ===
+requests==2.31.0
+# Purpose: HTTP library for API calls
+# Used for: Optional HuggingFace API integration
+# Note: Only active if HF_TOKEN environment variable is set
+
+# ============================================================================
+# Installation Instructions:
+# 
+#   pip install -r requirements.txt
+#
+# Or for upgrade:
+#   pip install -r requirements.txt --upgrade
+#
+# ============================================================================
