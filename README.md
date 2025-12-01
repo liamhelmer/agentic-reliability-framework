@@ -1,15 +1,4 @@
----
-title: Agentic Reliability Framework
-emoji: 🧠
-colorFrom: blue
-colorTo: purple
-sdk: gradio
-sdk_version: "4.44.1"
-app_file: app.py
-pinned: false
-license: mit
-short_description: AI-powered reliability with multi-agent anomaly detection
----
+
 # 🧠 Agentic Reliability Framework (v2.0 - PATCHED)
 
 **Multi-Agent AI System for Production Reliability Monitoring**
