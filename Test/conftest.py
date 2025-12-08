@@ -85,10 +85,11 @@ def sample_incident_data():
     return {
         "component": "api-service",
         "latency": 450.0,
+        "latency_p99": 650.0,
         "error_rate": 0.22,
-        "throughput": 8500,
-        "cpu_util": 0.95,
-        "memory_util": 0.88,
+        "throughput": 8500.0,
+        "cpu_utilization": 0.95,
+        "memory_utilization": 0.88,
         "severity": "CRITICAL",
         "timestamp": datetime.now(timezone.utc).isoformat()
     }
@@ -145,7 +146,7 @@ def policy_engine():
         HealingPolicy(
             name="high_cpu_policy",
             conditions=[
-                PolicyCondition(metric="cpu_util", operator="gt", threshold=0.9)
+                PolicyCondition(metric="cpu_utilization", operator="gt", threshold=0.9)
             ],
             actions=[HealingAction.SCALE_OUT],
             priority=3,
@@ -178,12 +179,15 @@ def sample_event():
     return ReliabilityEvent(
         component="test-service",
         latency=600.0,
+        latency_p99=800.0,
         error_rate=0.1,
-        throughput=1000,
-        cpu_util=0.5,
-        memory_util=0.6,
+        throughput=1000.0,
+        cpu_utilization=0.5,
+        memory_utilization=0.6,
         severity=EventSeverity.MEDIUM,
-        timestamp=datetime.now(timezone.utc)
+        timestamp=datetime.now(timezone.utc),
+        dependencies=[],
+        metadata={"test": "data"}
     )
 
 
@@ -193,12 +197,15 @@ def normal_event():
     return ReliabilityEvent(
         component="test-service",
         latency=100.0,
+        latency_p99=150.0,
         error_rate=0.01,
-        throughput=1000,
-        cpu_util=0.3,
-        memory_util=0.4,
+        throughput=1000.0,
+        cpu_utilization=0.3,
+        memory_utilization=0.4,
         severity=EventSeverity.LOW,
-        timestamp=datetime.now(timezone.utc)
+        timestamp=datetime.now(timezone.utc),
+        dependencies=[],
+        metadata={"environment": "test"}
     )
 
 
@@ -208,12 +215,69 @@ def critical_event():
     return ReliabilityEvent(
         component="test-service",
         latency=800.0,
+        latency_p99=1200.0,
         error_rate=0.5,
-        throughput=1000,
-        cpu_util=0.95,
-        memory_util=0.95,
+        throughput=1000.0,
+        cpu_utilization=0.95,
+        memory_utilization=0.95,
         severity=EventSeverity.CRITICAL,
-        timestamp=datetime.now(timezone.utc)
+        timestamp=datetime.now(timezone.utc),
+        dependencies=[],
+        metadata={"alert": "critical"}
+    )
+
+
+@pytest.fixture
+def high_latency_event():
+    """Event specifically for testing latency policies"""
+    return ReliabilityEvent(
+        component="api-service",
+        latency=550.0,
+        latency_p99=750.0,  # Above 500 threshold
+        error_rate=0.05,
+        throughput=1200.0,
+        cpu_utilization=0.4,
+        memory_utilization=0.5,
+        severity=EventSeverity.HIGH,
+        timestamp=datetime.now(timezone.utc),
+        dependencies=["database-service", "cache-service"],
+        metadata={"region": "us-east-1"}
+    )
+
+
+@pytest.fixture
+def high_error_rate_event():
+    """Event specifically for testing error rate policies"""
+    return ReliabilityEvent(
+        component="payment-service",
+        latency=200.0,
+        latency_p99=300.0,
+        error_rate=0.45,  # Above 0.3 threshold
+        throughput=800.0,
+        cpu_utilization=0.6,
+        memory_utilization=0.7,
+        severity=EventSeverity.HIGH,
+        timestamp=datetime.now(timezone.utc),
+        dependencies=["auth-service", "fraud-service"],
+        metadata={"payment_gateway": "stripe"}
+    )
+
+
+@pytest.fixture
+def high_cpu_event():
+    """Event specifically for testing CPU policies"""
+    return ReliabilityEvent(
+        component="compute-service",
+        latency=300.0,
+        latency_p99=450.0,
+        error_rate=0.02,
+        throughput=2000.0,
+        cpu_utilization=0.92,  # Above 0.9 threshold
+        memory_utilization=0.65,
+        severity=EventSeverity.MEDIUM,
+        timestamp=datetime.now(timezone.utc),
+        dependencies=["load-balancer"],
+        metadata={"instance_type": "c5.4xlarge"}
     )
 
 
@@ -247,7 +311,7 @@ def sample_anomaly_result():
         metrics={
             "latency_p99": 650.0,
             "error_rate": 0.25,
-            "cpu_util": 0.88
+            "cpu_utilization": 0.88
         },
         reason="Latency spike detected with high confidence"
     )
@@ -314,12 +378,15 @@ def generate_events():
             event = ReliabilityEvent(
                 component=f"service-{i}",
                 latency=base_latency + (i * 10),
+                latency_p99=(base_latency + (i * 10)) * 1.5,
                 error_rate=0.01 + (i * 0.02),
-                throughput=1000 + (i * 100),
-                cpu_util=0.3 + (i * 0.05),
-                memory_util=0.4 + (i * 0.04),
+                throughput=float(1000 + (i * 100)),
+                cpu_utilization=0.3 + (i * 0.05),
+                memory_utilization=0.4 + (i * 0.04),
                 severity=severity,
-                timestamp=datetime.now(timezone.utc)
+                timestamp=datetime.now(timezone.utc),
+                dependencies=[f"dependency-{j}" for j in range(i % 3)],
+                metadata={"index": i, "generated": True}
             )
             events.append(event)
         return events
@@ -349,6 +416,79 @@ def generate_policies():
             policies.append(policy)
         return policies
     return _generate_policies
+
+
+# ====================================================================
+# EDGE CASE FIXTURES
+# ====================================================================
+
+@pytest.fixture
+def minimal_event():
+    """Event with minimal required fields (for testing defaults)"""
+    return ReliabilityEvent(
+        component="minimal-service",
+        latency=0.0,
+        latency_p99=0.0,
+        error_rate=0.0,
+        throughput=0.0,
+        cpu_utilization=0.0,
+        memory_utilization=0.0,
+        severity=EventSeverity.LOW,
+        timestamp=datetime.now(timezone.utc),
+        dependencies=[],
+        metadata={}
+    )
+
+
+@pytest.fixture
+def extreme_values_event():
+    """Event with extreme values for boundary testing"""
+    return ReliabilityEvent(
+        component="extreme-service",
+        latency=999999.0,
+        latency_p99=1999999.0,
+        error_rate=1.0,  # Maximum
+        throughput=9999999.0,
+        cpu_utilization=1.0,  # Maximum
+        memory_utilization=1.0,  # Maximum
+        severity=EventSeverity.CRITICAL,
+        timestamp=datetime.now(timezone.utc),
+        dependencies=["dep1", "dep2", "dep3", "dep4", "dep5"],
+        metadata={
+            "test": "extreme",
+            "load": "very_high",
+            "region": "moon-base-alpha"
+        }
+    )
+
+
+@pytest.fixture
+def event_with_dependencies():
+    """Event with complex dependency tree"""
+    return ReliabilityEvent(
+        component="main-service",
+        latency=150.0,
+        latency_p99=225.0,
+        error_rate=0.03,
+        throughput=5000.0,
+        cpu_utilization=0.45,
+        memory_utilization=0.55,
+        severity=EventSeverity.MEDIUM,
+        timestamp=datetime.now(timezone.utc),
+        dependencies=[
+            "database-primary",
+            "database-replica",
+            "redis-cache",
+            "auth-service",
+            "payment-service",
+            "notification-service"
+        ],
+        metadata={
+            "tier": "production",
+            "version": "v2.5.1",
+            "team": "platform-engineering"
+        }
+    )
 
 
 # ====================================================================
@@ -403,11 +543,14 @@ def assert_event_equal():
     def _assert_event_equal(event1, event2, ignore_timestamp=False):
         assert event1.component == event2.component
         assert event1.latency == event2.latency
+        assert event1.latency_p99 == event2.latency_p99
         assert event1.error_rate == event2.error_rate
         assert event1.throughput == event2.throughput
-        assert event1.cpu_util == event2.cpu_util
-        assert event1.memory_util == event2.memory_util
+        assert event1.cpu_utilization == event2.cpu_utilization
+        assert event1.memory_utilization == event2.memory_utilization
         assert event1.severity == event2.severity
+        assert event1.dependencies == event2.dependencies
+        assert event1.metadata == event2.metadata
         if not ignore_timestamp:
             assert event1.timestamp == event2.timestamp
     return _assert_event_equal
@@ -426,3 +569,25 @@ def validate_policy():
         assert policy.max_executions_per_hour >= 0
         return True
     return _validate_policy
+
+
+@pytest.fixture
+def create_custom_event():
+    """Helper to create custom events with specific values"""
+    def _create_custom_event(**kwargs):
+        defaults = {
+            "component": "custom-service",
+            "latency": 100.0,
+            "latency_p99": 150.0,
+            "error_rate": 0.01,
+            "throughput": 1000.0,
+            "cpu_utilization": 0.3,
+            "memory_utilization": 0.4,
+            "severity": EventSeverity.MEDIUM,
+            "timestamp": datetime.now(timezone.utc),
+            "dependencies": [],
+            "metadata": {}
+        }
+        defaults.update(kwargs)
+        return ReliabilityEvent(**defaults)
+    return _create_custom_event
