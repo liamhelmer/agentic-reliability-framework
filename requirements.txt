@@ -41,4 +41,5 @@ atomicwrites>=1.4.1
 # ============================================================================
 # Development Dependencies (install separately)
 # pip install pytest pytest-asyncio pytest-cov pytest-mock black ruff mypy
-# ============================================================================
+# ============================================================================python-dotenv>=1.0.0
+python-dotenv>=1.0.0
