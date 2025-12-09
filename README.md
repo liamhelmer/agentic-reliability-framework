@@ -2,19 +2,10 @@
   <img src="https://dummyimage.com/1200x260/000/fff&text=AGENTIC+RELIABILITY+FRAMEWORK" width="100%" alt="Agentic Reliability Framework Banner" />
 </p>
 
-<h1 align="center">⚙️ Agentic Reliability Framework</h1>
-
-<p align="center">
+<h1 align="center"><p align="center">
   <strong>Adaptive anomaly detection + policy-driven self-healing for AI systems</strong><br>
   Minimal, fast, and production-focused.
-</p>
-
-<p align="center">
-  <a href="https://www.python.org/"><img src="https://img.shields.io/badge/python-3.10+-blue" alt="Python 3.10+"></a>
-  <a href="#"><img src="https://img.shields.io/badge/status-MVP-green" alt="Status: MVP"></a>
-  <a href="#"><img src="https://img.shields.io/badge/license-MIT-lightgrey" alt="License: MIT"></a>
-  <a href="https://github.com/petterjuan/agentic-reliability-framework/actions/workflows/tests.yml"><img src="https://github.com/petterjuan/agentic-reliability-framework/actions/workflows/tests.yml/badge.svg" alt="Tests"></a>
-</p>
+</p></h1>
 
 # Agentic Reliability Framework (ARF)
 
