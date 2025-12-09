@@ -1,13 +1,3 @@
----
-title: Agentic Reliability Framework
-emoji: 🧠
-colorFrom: blue
-colorTo: purple
-sdk: gradio
-sdk_version: "5.50.0"
-app_file: app.py
-pinned: false
----
 <p align="center">
   <img src="https://dummyimage.com/1200x260/000/fff&text=AGENTIC+RELIABILITY+FRAMEWORK" width="100%" alt="Agentic Reliability Framework Banner" />
 </p>
