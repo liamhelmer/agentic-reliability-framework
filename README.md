@@ -2,12 +2,10 @@
   <img src="https://dummyimage.com/1200x260/000/fff&text=AGENTIC+RELIABILITY+FRAMEWORK" width="100%" alt="Agentic Reliability Framework Banner" />
 </p>
 
-<h1 align="center"><p align="center">
-  <strong>Adaptive anomaly detection + policy-driven self-healing for AI systems</strong><br>
+<h2 align="center"><p align="center">
+  <strong>Adaptive anomaly detection + policy-driven self-healing for AI systems</strong>
   Minimal, fast, and production-focused.
-</p></h1>
-
-# Agentic Reliability Framework (ARF)
+</p></h2>
 
 > **Fortune 500-grade AI system for production reliability monitoring**  
 > Built by engineers who managed $1M+ incidents at scale
