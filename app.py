@@ -534,13 +534,26 @@ class ProductionFAISSIndex:
 
 
 # === FAISS & Embeddings Setup ===
+# Lazy-loaded model
+model = None
+
+def get_model():
+    """Lazy-load SentenceTransformer model on first use"""
+    global model
+    if model is None:
+        from sentence_transformers import SentenceTransformer
+        logger.info("Loading SentenceTransformer model...")
+        model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
+        logger.info("Model loaded on demand")
+    return model
+
 try:
     from sentence_transformers import SentenceTransformer
     import faiss
     
-    logger.info("Loading SentenceTransformer model...")
-    model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
-    logger.info("SentenceTransformer model loaded successfully")
+# REMOVED:     logger.info("Loading SentenceTransformer model...")
+# REMOVED:     model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
+# REMOVED:     logger.info("SentenceTransformer model loaded successfully")
     
     if os.path.exists(config.INDEX_FILE):
         logger.info(f"Loading existing FAISS index from {config.INDEX_FILE}")
@@ -1619,7 +1632,7 @@ class EnhancedReliabilityEngine:
                 loop = asyncio.get_event_loop()
                 vec = await loop.run_in_executor(
                     thread_safe_index._encoder_pool,
-                    model.encode,
+                    get_model().encode,
                     [vector_text]
                 )
                 
