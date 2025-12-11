@@ -1550,48 +1550,6 @@ If taken, use: `arf-framework` or `agentic-arf`
 3. **Advanced Features:** Distributed FAISS, voice AI integration
 
 ---
-
-## Appendix: Code Fixes for Current ARF
-
-### Fix 1: Event History Display Bug (CRITICAL)
-
-**File:** `app.py`  
-**Lines:** 1297, 1313, 1325, 1339, 1465, 1491
-
-**Change:**
-```python
-# BEFORE (all error returns):
-gr.Dataframe(value=[])
-
-# AFTER:
-gr.update(value=[])
-```
-
-**Change:**
-```python
-# BEFORE (success return at line 1465):
-gr.Dataframe(
-    headers=["Timestamp", "Component", "Latency", "Error Rate", "Throughput", "Severity", "Analysis"],
-    value=table_data,
-    wrap=True
-)
-
-# AFTER:
-gr.update(value=table_data)
-```
-
-**Reason:** Gradio's `.click()` handler expects updates via `gr.update()`, not new component instances.
-
-### Fix 2: Add Dependencies to requirements.txt
-
-```txt
-# Add for Tier 2
-fastapi>=0.104.0
-uvicorn>=0.24.0
-httpx>=0.25.0
-click>=8.1.0
-```
-
 ---
 
 ## Contact & Support
