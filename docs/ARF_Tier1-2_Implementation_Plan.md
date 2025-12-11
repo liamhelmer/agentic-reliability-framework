@@ -8,40 +8,6 @@
 
 ---
 
-```python
-gr.Dataframe(
-    headers=["Timestamp", "Component", "Latency", "Error Rate", "Throughput", "Severity", "Analysis"],
-    value=table_data,
-    wrap=True
-)
-```
-
-**The Bug:** The async handler is creating a **NEW Dataframe component** instead of just returning the `value`. Gradio's `.update()` pattern should be used here.
-
-**Fix:**
-
-```python
-# BEFORE (BROKEN):
-gr.Dataframe(
-    headers=["Timestamp", "Component", "Latency", "Error Rate", "Throughput", "Severity", "Analysis"],
-    value=table_data,
-    wrap=True
-)
-
-# AFTER (FIXED):
-gr.update(value=table_data)
-```
-
-**Apply this fix at these locations in app.py:**
-- Line 1465 (main success case)
-- Line 1297 (rate limit error)
-- Line 1313 (type conversion error)
-- Line 1325 (validation error)
-- Line 1339 (processing error)
-- Line 1491 (exception handler)
-
-**Testing:** After applying, submit a telemetry event and verify the "Event History" table populates immediately.
-
 ---
 
 ## Executive Summary
