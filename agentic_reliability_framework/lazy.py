@@ -29,15 +29,11 @@ class LazyLoader:
 
 
 # ========== MODULE-LEVEL IMPORTS ==========
-# Import here to avoid circular dependencies in app.py
 
 def _load_engine():
     """Import and create EnhancedReliabilityEngine"""
     # Import here to avoid circular dependency
-    from .app import EnhancedReliabilityEngine, OrchestrationManager, SimplePredictiveEngine
-    from .healing_policies import PolicyEngine
-    from .models import ReliabilityEvent, EventSeverity
-    
+    from .app import EnhancedReliabilityEngine
     return EnhancedReliabilityEngine()
 
 def _load_agents():
