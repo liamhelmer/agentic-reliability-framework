@@ -13,10 +13,10 @@ try:
     with open(version_file, 'r') as f:
         for line in f:
             if '__version__' in line:
-                version = line.split('=')[1].strip().strip("'\"")
+                version_str = line.split('=')[1].strip().strip("'\"")  # FIXED: Rename variable
                 break
-    VERSION = version
-except Exception:  # FIXED: Changed bare except to except Exception
+    VERSION = version_str  # FIXED: Use different variable name
+except Exception:
     VERSION = "unknown"
 
 @click.group()
@@ -28,7 +28,7 @@ def main():
 @main.command()
 def version():
     """Show ARF version (FAST - no FAISS load)"""
-    click.echo(f"Agentic Reliability Framework v{VERSION}")
+    click.echo(f"Agentic Reliability Framework v{VERSION}")  # FIXED: Use VERSION constant
 
 @main.command()
 def doctor():
@@ -44,7 +44,7 @@ def doctor():
         else:
             click.echo("✗ FAISS not installed", err=True)
             sys.exit(1)
-    except Exception:  # FIXED: Changed bare except to except Exception
+    except Exception:
         click.echo("✗ FAISS not installed", err=True)
         sys.exit(1)
     
