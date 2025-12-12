@@ -3,24 +3,21 @@ Simple lazy loading for ARF - No circular dependencies!
 """
 
 import threading
-from typing import Callable, Optional, TypeVar, Generic
+from typing import Callable, Optional, Any
 
-T = TypeVar('T')
-
-class LazyLoader(Generic[T]):  # FIXED: Make class generic
+class LazyLoader:
     """Simple thread-safe lazy loader"""
-    def __init__(self, loader_func: Callable[[], T]) -> None:
+    def __init__(self, loader_func: Callable[[], Any]) -> None:
         self._loader_func = loader_func
         self._lock = threading.RLock()
-        self._instance: Optional[T] = None
+        self._instance: Optional[Any] = None
     
-    def __call__(self) -> T:
+    def __call__(self) -> Any:
         if self._instance is None:
             with self._lock:
                 if self._instance is None:
                     self._instance = self._loader_func()
-        # FIXED: We know this is not None when called
-        return self._instance  # type: ignore[return-value]
+        return self._instance
     
     def reset(self) -> None:
         """Reset instance (for testing)"""
@@ -30,13 +27,13 @@ class LazyLoader(Generic[T]):  # FIXED: Make class generic
 
 # ========== MODULE-LEVEL IMPORTS ==========
 
-def _load_engine() -> Any:  # FIXED: Add return type
+def _load_engine():
     """Import and create EnhancedReliabilityEngine"""
     # Import here to avoid circular dependency
     from .app import EnhancedReliabilityEngine
     return EnhancedReliabilityEngine()
 
-def _load_agents() -> Dict[str, Any]:  # FIXED: Add return type
+def _load_agents():
     """Create all agent instances"""
     from .app import (
         AnomalyDetectionAgent, 
@@ -59,7 +56,7 @@ def _load_agents() -> Dict[str, Any]:  # FIXED: Add return type
         'predictive_engine': predictive_engine
     }
 
-def _load_faiss_index() -> Any:  # FIXED: Add return type
+def _load_faiss_index():
     """Load or create FAISS index"""
     import os
     import json
@@ -83,7 +80,7 @@ def _load_faiss_index() -> Any:  # FIXED: Add return type
     
     return ProductionFAISSIndex(index, incident_texts)
 
-def _load_business_metrics() -> Any:  # FIXED: Add return type
+def _load_business_metrics():
     """Create BusinessMetricsTracker"""
     from .app import BusinessMetricsTracker
     return BusinessMetricsTracker()
@@ -91,36 +88,35 @@ def _load_business_metrics() -> Any:  # FIXED: Add return type
 
 # ========== CREATE LAZY LOADERS ==========
 
-# FIXED: Remove the incorrect __class__ references
-engine_loader: LazyLoader[Any] = LazyLoader(_load_engine)
-agents_loader: LazyLoader[Dict[str, Any]] = LazyLoader(_load_agents)
-faiss_loader: LazyLoader[Any] = LazyLoader(_load_faiss_index)
-business_metrics_loader: LazyLoader[Any] = LazyLoader(_load_business_metrics)
+engine_loader = LazyLoader(_load_engine)
+agents_loader = LazyLoader(_load_agents)
+faiss_loader = LazyLoader(_load_faiss_index)
+business_metrics_loader = LazyLoader(_load_business_metrics)
 
 
 # ========== PUBLIC API ==========
 
-def get_engine() -> Any:
+def get_engine():
     """Get or create EnhancedReliabilityEngine"""
     return engine_loader()
 
-def get_agents() -> Dict[str, Any]:
+def get_agents():
     """Get or create agent instances"""
     return agents_loader()
 
-def get_faiss_index() -> Any:
+def get_faiss_index():
     """Get or create FAISS index"""
     return faiss_loader()
 
-def get_business_metrics() -> Any:
+def get_business_metrics():
     """Get or create BusinessMetricsTracker"""
     return business_metrics_loader()
 
-def enhanced_engine() -> Any:
+def enhanced_engine():
     """Alias for get_engine()"""
     return get_engine()
 
-def reset_all() -> None:
+def reset_all():
     """Reset all loaders (for testing)"""
     engine_loader.reset()
     agents_loader.reset()
