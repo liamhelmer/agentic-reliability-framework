@@ -163,8 +163,7 @@ class ReliabilityEvent(BaseModel):
                 )
         return v
     
-    @computed_field  # FIXED: Use computed_field instead of __init__ override
-    @property
+    @computed_field  # FIXED: Remove @property decorator
     def fingerprint(self) -> str:
         """
         Generate deterministic fingerprint for event deduplication
