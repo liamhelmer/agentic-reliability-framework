@@ -5,17 +5,6 @@ Production-grade multi-agent AI for reliability monitoring
 
 from .__version__ import __version__
 
-# For type checking only
-from typing import TYPE_CHECKING
-if TYPE_CHECKING:
-    from .app import (
-        EnhancedReliabilityEngine,
-        SimplePredictiveEngine,
-        BusinessImpactCalculator,
-        AdvancedAnomalyDetector,
-        create_enhanced_ui,
-    )
-
 __all__ = [
     "__version__",
     "EnhancedReliabilityEngine",
