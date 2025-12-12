@@ -98,6 +98,7 @@ Multi-agent system with specialized AI agents working in concert:
 ### 1. Install via PyPI (Recommended)
 ```bash
 pip install agentic-reliability-framework
+```
 
 **That's it!** The system is now monitoring reliability. 🎉
 
