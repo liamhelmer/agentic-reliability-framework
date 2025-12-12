@@ -3,8 +3,8 @@
 Patch app.py to use lazy initialization
 """
 
-import re
-import sys
+# import re  # REMOVED: unused import
+# import sys  # REMOVED: unused import
 
 def patch_app_file():
     with open('arf/app.py', 'r') as f:
@@ -48,7 +48,7 @@ def patch_app_file():
             # Simple replacement for method calls
             new_line = line.replace('enhanced_engine.', 'get_engine().')
             if new_line != line:
-                changes_made.append(f'Replaced enhanced_engine. with get_engine().')
+                changes_made.append('Replaced enhanced_engine. with get_engine().')  # FIXED: Removed f prefix
             final_lines.append(new_line)
         else:
             final_lines.append(line)
