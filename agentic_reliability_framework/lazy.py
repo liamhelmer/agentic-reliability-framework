@@ -3,13 +3,13 @@ Simple lazy loading for ARF - No circular dependencies!
 """
 
 import threading
-from typing import Callable, Optional, TypeVar, cast
+from typing import Callable, Optional, TypeVar, Any, Generic
 
 T = TypeVar('T')
 
-class LazyLoader:
+class LazyLoader(Generic[T]):  # FIXED: Make class generic
     """Simple thread-safe lazy loader"""
-    def __init__(self, loader_func: Callable[[], T]) -> None:  # FIXED: Add return type
+    def __init__(self, loader_func: Callable[[], T]) -> None:
         self._loader_func = loader_func
         self._lock = threading.RLock()
         self._instance: Optional[T] = None
@@ -19,8 +19,8 @@ class LazyLoader:
             with self._lock:
                 if self._instance is None:
                     self._instance = self._loader_func()
-        # FIXED: Use cast to help mypy understand the type
-        return cast(T, self._instance)
+        # FIXED: We know this is not None when called
+        return self._instance  # type: ignore[return-value]
     
     def reset(self) -> None:
         """Reset instance (for testing)"""
@@ -91,10 +91,10 @@ def _load_business_metrics():
 
 # ========== CREATE LAZY LOADERS ==========
 
-engine_loader = LazyLoader(_load_engine)
-agents_loader = LazyLoader(_load_agents)
-faiss_loader = LazyLoader(_load_faiss_index)
-business_metrics_loader = LazyLoader(_load_business_metrics)
+engine_loader = LazyLoader[_load_engine.__class__](_load_engine)
+agents_loader = LazyLoader[_load_agents.__class__](_load_agents)
+faiss_loader = LazyLoader[_load_faiss_index.__class__](_load_faiss_index)
+business_metrics_loader = LazyLoader[_load_business_metrics.__class__](_load_business_metrics)
 
 
 # ========== PUBLIC API ==========
