@@ -93,38 +93,11 @@ Multi-agent system with specialized AI agents working in concert:
 | **99.4% Test Coverage** | 157/158 tests passing | ✅ Production |
 
 ---
-
 ## 🚀 Quick Start
 
-### **1. Clone & Install**
-
+### 1. Install via PyPI (Recommended)
 ```bash
-# Clone repository
-git clone https://github.com/petterjuan/agentic-reliability-framework
-cd agentic-reliability-framework
-
-# Install dependencies
-pip install -r requirements.txt
-```
-
-### **2. Configure Environment**
-
-```bash
-# Copy environment template
-cp .env.example .env
-
-# Edit configuration (optional - has sensible defaults)
-nano .env
-```
-
-### **3. Run Locally**
-
-```bash
-# Start the application
-python app.py
-
-# Visit http://localhost:7860
-```
+pip install agentic-reliability-framework
 
 **That's it!** The system is now monitoring reliability. 🎉
 
