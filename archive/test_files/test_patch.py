@@ -99,7 +99,7 @@ def test_cli_commands():
             
             if result.returncode == 0:
                 if expected in result.stdout or expected in result.stderr:
-                    print(f"    ✅ Pass")
+                    print("    ✅ Pass")  # FIXED: Removed f prefix
                 else:
                     print(f"    ⚠️  No '{expected}' in output")
                     print(f"    Output: {result.stdout[:100]}...")
