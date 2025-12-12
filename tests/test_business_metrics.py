@@ -1,4 +1,4 @@
-import sys
+# import sys  # REMOVED: unused import
 print("Testing BusinessMetricsTracker...")
 
 # First check if we can import it
