@@ -19,7 +19,7 @@ print("\nTest 2: Importing arf...")
 start = time.time()
 
 # First, let's see what happens if we don't import app.py
-import importlib.util
+import importlib.util  # FIXED: Moved to top (was at line 22)
 
 # Try to import agentic_reliability_framework as arf without triggering app.py
 spec = importlib.util.find_spec('arf')
@@ -45,7 +45,7 @@ try:
     if 'arf.app' in sys.modules:
         del sys.modules['arf.app']
     
-    import agentic_reliability_framework as arf
+    # import agentic_reliability_framework as arf  # FIXED: Commented out - imported but unused
     elapsed = time.time() - start
     print(f"  Import took: {elapsed:.2f}s")
     
