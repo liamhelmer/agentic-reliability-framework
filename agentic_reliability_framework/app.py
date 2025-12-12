@@ -1,5 +1,22 @@
 from .config import config
-from .lazy_init import get_engine, get_agents, get_faiss_index, enhanced_engine
+def get_engine():
+    from .lazy import get_engine as _get_engine
+    return _get_engine()
+
+def get_agents():
+    from .lazy import get_agents as _get_agents
+    return _get_agents()
+
+def get_faiss_index():
+    from .lazy import get_faiss_index as _get_faiss_index
+    return _get_faiss_index()
+
+def get_business_metrics():
+    from .lazy import get_business_metrics as _get_business_metrics
+    return _get_business_metrics()
+
+def enhanced_engine():
+    return get_engine()
 from .config import config
 """
 Enterprise Agentic Reliability Framework - Main Application (FIXED VERSION)
@@ -538,15 +555,21 @@ class ProductionFAISSIndex:
 # Lazy-loaded model
 model = None
 
-def get_model():
-    """Lazy-load SentenceTransformer model on first use"""
-    global model
-    if model is None:
-        from sentence_transformers import SentenceTransformer
-        logger.info("Loading SentenceTransformer model...")
-        model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
-        logger.info("Model loaded on demand")
-    return model
+# In ProductionFAISSIndex._flush_batch(), replace:
+# vec = await loop.run_in_executor(
+#     get_faiss_index()._encoder_pool,
+#     get_model().encode,  # ← This calls get_model()
+#     [vector_text]
+# )
+
+# With:
+from sentence_transformers import SentenceTransformer
+model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
+vec = await loop.run_in_executor(
+    get_faiss_index()._encoder_pool,
+    model.encode,
+    [vector_text]
+)
 # 
 # try:
 #     from sentence_transformers import SentenceTransformer
