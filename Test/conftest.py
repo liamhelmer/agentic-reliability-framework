@@ -2,7 +2,7 @@
 
 import pytest
 from unittest.mock import AsyncMock, MagicMock
-from agentic_reliability_framework.datetime import datetime, timezone
+from datetime import datetime, timezone
 
 from agentic_reliability_framework.models import (
     ReliabilityEvent, HealingPolicy, PolicyCondition,
