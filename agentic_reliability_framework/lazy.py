@@ -1,10 +1,10 @@
 """
-Simple, thread-safe lazy loading for ARF.
-One file to rule them all.
+Simple lazy loading for ARF - No circular dependencies!
 """
 
 import threading
 from typing import Any, Callable, Optional, TypeVar
+import numpy as np
 
 T = TypeVar('T')
 
@@ -28,14 +28,20 @@ class LazyLoader:
             self._instance = None
 
 
-# ========== LAZY LOADERS ==========
+# ========== MODULE-LEVEL IMPORTS ==========
+# Import here to avoid circular dependencies in app.py
 
-# Import functions (defined separately to avoid circular imports)
 def _load_engine():
-    from .app import EnhancedReliabilityEngine
+    """Import and create EnhancedReliabilityEngine"""
+    # Import here to avoid circular dependency
+    from .app import EnhancedReliabilityEngine, OrchestrationManager, SimplePredictiveEngine
+    from .healing_policies import PolicyEngine
+    from .models import ReliabilityEvent, EventSeverity
+    
     return EnhancedReliabilityEngine()
 
 def _load_agents():
+    """Create all agent instances"""
     from .app import (
         AnomalyDetectionAgent, 
         RootCauseAgent, 
@@ -58,6 +64,7 @@ def _load_agents():
     }
 
 def _load_faiss_index():
+    """Load or create FAISS index"""
     import os
     import json
     import faiss
@@ -66,44 +73,54 @@ def _load_faiss_index():
     from sentence_transformers import SentenceTransformer
     
     # Load or create index
-    if os.path.exists(config.index_file):
-        index = faiss.read_index(config.index_file)
-        incident_texts = {}
-        if os.path.exists(config.incident_texts_file):
-            with open(config.incident_texts_file, 'r') as f:
+    if os.path.exists(config.INDEX_FILE):
+        index = faiss.read_index(config.INDEX_FILE)
+        incident_texts = []
+        if os.path.exists(config.TEXTS_FILE):
+            with open(config.TEXTS_FILE, 'r') as f:
                 incident_texts = json.load(f)
     else:
         model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
         dimension = model.get_sentence_embedding_dimension()
         index = faiss.IndexFlatIP(dimension)
-        incident_texts = {}
+        incident_texts = []
     
     return ProductionFAISSIndex(index, incident_texts)
 
 def _load_business_metrics():
+    """Create BusinessMetricsTracker"""
     from .app import BusinessMetricsTracker
     return BusinessMetricsTracker()
 
-# Create lazy loader instances
+
+# ========== CREATE LAZY LOADERS ==========
+
 engine_loader = LazyLoader(_load_engine)
 agents_loader = LazyLoader(_load_agents)
 faiss_loader = LazyLoader(_load_faiss_index)
 business_metrics_loader = LazyLoader(_load_business_metrics)
 
-# Convenience functions
+
+# ========== PUBLIC API ==========
+
 def get_engine():
+    """Get or create EnhancedReliabilityEngine"""
     return engine_loader()
 
 def get_agents():
+    """Get or create agent instances"""
     return agents_loader()
 
 def get_faiss_index():
+    """Get or create FAISS index"""
     return faiss_loader()
 
 def get_business_metrics():
+    """Get or create BusinessMetricsTracker"""
     return business_metrics_loader()
 
 def enhanced_engine():
+    """Alias for get_engine()"""
     return get_engine()
 
 def reset_all():
