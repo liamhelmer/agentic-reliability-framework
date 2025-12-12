@@ -6,7 +6,7 @@ Loads settings from environment variables with sensible defaults.
 
 import os
 from dataclasses import dataclass
-from typing import Optional
+# typing.Optional not used in this file
 from dotenv import load_dotenv
 
 # Load .env file if it exists
