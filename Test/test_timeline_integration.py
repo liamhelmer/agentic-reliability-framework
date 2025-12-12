@@ -5,7 +5,7 @@ Tests the timeline feature integration with the rest of ARF.
 """
 
 import pytest
-from unittest.mock import Mock, patch, AsyncMock
+# Mock imports removed - not used in this test
 
 # Import your components (adjust paths as needed)
 # from agentic_reliability_framework.app import (
