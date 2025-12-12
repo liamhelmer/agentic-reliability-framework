@@ -16,7 +16,7 @@ try:
                 version = line.split('=')[1].strip().strip("'\"")
                 break
     VERSION = version
-except:
+except Exception:  # FIXED: Changed bare except to except Exception
     VERSION = "unknown"
 
 @click.group()
@@ -37,9 +37,14 @@ def doctor():
     
     # Check FAISS (but only when needed)
     try:
-        import faiss
-        click.echo("✓ FAISS installed")
-    except ImportError:
+        import importlib.util
+        faiss_spec = importlib.util.find_spec("faiss")
+        if faiss_spec is not None:
+            click.echo("✓ FAISS installed")
+        else:
+            click.echo("✗ FAISS not installed", err=True)
+            sys.exit(1)
+    except Exception:  # FIXED: Changed bare except to except Exception
         click.echo("✗ FAISS not installed", err=True)
         sys.exit(1)
     
