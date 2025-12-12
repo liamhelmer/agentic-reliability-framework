@@ -1,4 +1,5 @@
 from .config import config
+
 def get_engine():
     from .lazy import get_engine as _get_engine
     return _get_engine()
@@ -17,7 +18,7 @@ def get_business_metrics():
 
 def enhanced_engine():
     return get_engine()
-from .config import config
+
 """
 Enterprise Agentic Reliability Framework - Main Application (FIXED VERSION)
 Multi-Agent AI System for Production Reliability Monitoring
@@ -67,8 +68,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-
-
 # === CONSTANTS (FIXED: Extracted all magic numbers) ===
 class Constants:
     """Centralized constants to eliminate magic numbers"""
@@ -114,21 +113,7 @@ class Constants:
     MAX_REQUESTS_PER_MINUTE = 60
     MAX_REQUESTS_PER_HOUR = 500
 
-
 # === Configuration ===
-class Config:
-    """Centralized configuration for the reliability framework"""
-    HF_TOKEN: str = os.getenv("HF_TOKEN", "").strip()
-    HF_API_URL: str = "https://router.huggingface.co/hf-inference/v1/completions"
-    
-    INDEX_FILE: str = os.getenv("INDEX_FILE", "data/incident_vectors.index")
-    TEXTS_FILE: str = os.getenv("TEXTS_FILE", "data/incident_texts.json")
-    DATA_DIR: str = os.getenv("DATA_DIR", "data")
-    
-    # Create data directory if it doesn't exist
-    os.makedirs(DATA_DIR, exist_ok=True)
-
-
 config = Config()
 HEADERS = {"Authorization": f"Bearer {config.HF_TOKEN}"} if config.HF_TOKEN else {}
 
@@ -269,7 +254,6 @@ def validate_component_id(component_id: str) -> Tuple[bool, str]:
     
     return True, ""
 
-
 def validate_inputs(
     latency: Any,
     error_rate: Any,
@@ -336,7 +320,6 @@ def validate_inputs(
         logger.error(f"Validation error: {e}", exc_info=True)
         return False, f"❌ Validation error: {str(e)}"
 
-
 # === Thread-Safe Data Structures ===
 class ThreadSafeEventStore:
     """Thread-safe storage for reliability events"""
@@ -366,7 +349,6 @@ class ThreadSafeEventStore:
         """Get total event count"""
         with self._lock:
             return len(self._events)
-
 
 # === FAISS Integration (FIXED: Single-writer pattern for thread safety) ===
 class ProductionFAISSIndex:
@@ -485,7 +467,7 @@ class ProductionFAISSIndex:
             with tempfile.NamedTemporaryFile(
                 mode='wb',
                 delete=False,
-                dir=os.path.dirname(config.index_file),
+                dir=os.path.dirname(config.INDEX_FILE),
                 prefix='index_',
                 suffix='.tmp'
             ) as tmp:
@@ -500,7 +482,7 @@ class ProductionFAISSIndex:
                 os.fsync(f.fileno())
             
             # Atomic rename
-            os.replace(temp_path, config.index_file)
+            os.replace(temp_path, config.INDEX_FILE)
             
             # Save texts with atomic write
             with self._lock:
@@ -550,66 +532,14 @@ class ProductionFAISSIndex:
         self._writer_thread.join(timeout=5.0)
         self._encoder_pool.shutdown(wait=True)
 
-
-# === FAISS & Embeddings Setup ===
-# Lazy-loaded model
-model = None
-
-# In ProductionFAISSIndex._flush_batch(), replace:
-# vec = await loop.run_in_executor(
-#     get_faiss_index()._encoder_pool,
-#     get_model().encode,  # ← This calls get_model()
-#     [vector_text]
-# )
-
-# With:
-from sentence_transformers import SentenceTransformer
-model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
-vec = await loop.run_in_executor(
-    get_faiss_index()._encoder_pool,
-    model.encode,
-    [vector_text]
-)
-# 
-# try:
-#     from sentence_transformers import SentenceTransformer
-#     import faiss
-#     
-# # REMOVED:     logger.info("Loading SentenceTransformer model...")
-# # REMOVED:     model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
-# # REMOVED:     logger.info("SentenceTransformer model loaded successfully")
-#     
-#         # FAISS loading handled by lazy_init module
-#                 incident_texts = json.load(f)
-#             logger.info(f"Loaded {len(incident_texts)} incident texts")
-#     else:
-#         logger.info("Creating new FAISS index")
-#         index = faiss.IndexFlatL2(Constants.VECTOR_DIM)
-#         incident_texts = []
-#     
-# #     thread_safe_index = ProductionFAISSIndex(index, incident_texts)  # LAZY: Moved to get_faiss_index()
-#     
-# except ImportError as e:
-#     logger.warning(f"FAISS or SentenceTransformers not available: {e}")
-#     index = None
-#     incident_texts = []
-#     model = None
-#     get_faiss_index()  # Will be initialized lazily
-# except Exception as e:
-#     logger.error(f"Error initializing FAISS: {e}", exc_info=True)
-#     index = None
-#     incident_texts = []
-#     model = None
-    get_faiss_index()  # Will be initialized lazily
-
-    # === Predictive Models ===
+# === Predictive Models ===
 class SimplePredictiveEngine:
     """
     Lightweight forecasting engine with proper constant usage
     
-#     FIXED: All magic numbers extracted to Constants
-#     """
-#     
+    FIXED: All magic numbers extracted to Constants
+    """
+    
     def __init__(self, history_window: int = Constants.HISTORY_WINDOW):
         self.history_window = history_window
         self.service_history: Dict[str, deque] = {}
@@ -897,7 +827,6 @@ class SimplePredictiveEngine:
             'forecast_timestamp': datetime.datetime.now(datetime.timezone.utc).isoformat()
         }
 
-
 class BusinessImpactCalculator:
     """Calculate business impact of anomalies"""
     
@@ -952,7 +881,6 @@ class BusinessImpactCalculator:
             'throughput_reduction_pct': round(min(100, user_impact_multiplier * 100), 1)
         }
 
-
 class AdvancedAnomalyDetector:
     """Enhanced anomaly detection with adaptive thresholds"""
     
@@ -1000,13 +928,12 @@ class AdvancedAnomalyDetector:
             self.adaptive_thresholds['latency_p99'] = new_threshold
             logger.debug(f"Updated adaptive latency threshold to {new_threshold:.2f}ms")
 
-            # === Multi-Agent System ===
+# === Multi-Agent System ===
 class AgentSpecialization(Enum):
     """Agent specialization types"""
     DETECTIVE = "anomaly_detection"
     DIAGNOSTICIAN = "root_cause_analysis"
     PREDICTIVE = "predictive_analytics"
-
 
 class BaseAgent:
     """Base class for all specialized agents"""
@@ -1022,7 +949,6 @@ class BaseAgent:
     async def analyze(self, event: ReliabilityEvent) -> Dict[str, Any]:
         """Base analysis method to be implemented by specialized agents"""
         raise NotImplementedError
-
 
 class AnomalyDetectionAgent(BaseAgent):
     """Specialized agent for anomaly detection and pattern recognition"""
@@ -1241,7 +1167,6 @@ class AnomalyDetectionAgent(BaseAgent):
         
         return recommendations[:4]
 
-
 class RootCauseAgent(BaseAgent):
     """Specialized agent for root cause analysis"""
     
@@ -1351,7 +1276,6 @@ class RootCauseAgent(BaseAgent):
                 return "HIGH"
         return "MEDIUM"
 
-
 class PredictiveAgent(BaseAgent):
     """Specialized agent for predictive analytics"""
     
@@ -1389,7 +1313,6 @@ class PredictiveAgent(BaseAgent):
                 'recommendations': [f"Analysis error: {str(e)}"]
             }
 
-
 # FIXED: Add circuit breaker for agent resilience
 @circuit(failure_threshold=3, recovery_timeout=30, name="agent_circuit_breaker")
 async def call_agent_with_protection(agent: BaseAgent, event: ReliabilityEvent) -> Dict[str, Any]:
@@ -1410,7 +1333,6 @@ async def call_agent_with_protection(agent: BaseAgent, event: ReliabilityEvent) 
     except Exception as e:
         logger.error(f"Agent {agent.specialization.value} error: {e}", exc_info=True)
         raise
-
 
 class OrchestrationManager:
     """Orchestrates multiple specialized agents for comprehensive analysis"""
@@ -1527,7 +1449,7 @@ class OrchestrationManager:
                 unique_actions.append(action)
         return unique_actions[:5]
 
-        # === Enhanced Reliability Engine ===
+# === Enhanced Reliability Engine ===
 class EnhancedReliabilityEngine:
     """
     Main engine for processing reliability events
@@ -1634,17 +1556,20 @@ class EnhancedReliabilityEngine:
         business_impact = self.business_calculator.calculate_impact(event) if is_anomaly else None
         
         # Store in vector database for similarity detection
-        if model is not None and is_anomaly:
+        if is_anomaly:
             try:
                 # FIXED: Non-blocking encoding with ProcessPoolExecutor
                 analysis_text = agent_analysis.get('recommended_actions', ['No analysis'])[0]
                 vector_text = f"{component} {latency} {error_rate} {analysis_text}"
                 
-                # Encode asynchronously
+                # Encode asynchronously - import SentenceTransformer here
+                from sentence_transformers import SentenceTransformer
+                model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
+                
                 loop = asyncio.get_event_loop()
                 vec = await loop.run_in_executor(
                     get_faiss_index()._encoder_pool,
-                    get_model().encode,
+                    model.encode,
                     [vector_text]
                 )
                 
@@ -1696,10 +1621,6 @@ class EnhancedReliabilityEngine:
         logger.info(f"Event processed: {result['status']} with {result['severity']} severity")
         
         return result
-    
-# === Initialize Engine (with dependency injection) ===
-# enhanced_engine = EnhancedReliabilityEngine()  # LAZY: Replaced with get_engine()
-
 
 # === Global Metrics Tracker for ROI Dashboard ===
 class BusinessMetricsTracker:
@@ -1783,13 +1704,8 @@ class BusinessMetricsTracker:
             self.detection_times = []
             logger.info("Reset BusinessMetricsTracker")
 
-
 # Global business metrics tracker
 business_metrics = BusinessMetricsTracker()
-
-def get_business_metrics():
-    """Get the global BusinessMetricsTracker instance"""
-    return business_metrics
 
 class RateLimiter:
     """Simple rate limiter for request throttling"""
@@ -1816,7 +1732,6 @@ class RateLimiter:
             # Add current request
             self.requests.append(now)
             return True, ""
-
 
 rate_limiter = RateLimiter()
 
@@ -2168,8 +2083,7 @@ def create_enhanced_ui():
                 # Force events to show - if empty, add demo events
                 if get_engine().event_store.count() == 0:
                     print('DEBUG: No events in store, adding demo events...')
-                    from models import ReliabilityEvent, EventSeverity
-                    import datetime
+                    from .models import ReliabilityEvent, EventSeverity
                     for j in range(3):
                         demo_event = ReliabilityEvent(
                             component=f'demo-event-{j}',
@@ -2227,6 +2141,7 @@ def create_enhanced_ui():
                 predictive_insights_data = agent_insights_data.get('predictive_insights', {})
                 
                 # Get updated metrics
+                metrics = get_business_metrics().get_metrics()
                 
                 # RETURN THE RESULTS WITH ROI METRICS (10 values)
                 return (
@@ -2280,7 +2195,7 @@ def create_enhanced_ui():
     
     return demo
     
-    # === Main Entry Point ===
+# === Main Entry Point ===
 if __name__ == "__main__":
     logger.info("=" * 80)
     logger.info("Starting Enterprise Agentic Reliability Framework (DEMO READY VERSION)")
