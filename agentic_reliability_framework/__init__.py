@@ -37,12 +37,7 @@ def __getattr__(name: str):
         from .app import create_enhanced_ui
         return create_enhanced_ui
     elif name in {"get_engine", "get_agents", "get_faiss_index", "get_business_metrics", "enhanced_engine"}:
-        from .lazy import (
-            get_engine,
-            get_agents,
-            get_faiss_index,
-            get_business_metrics,
-            enhanced_engine,
-        )
+        from .lazy import get_engine, get_agents, get_faiss_index, get_business_metrics, enhanced_engine
+        return locals()[name]
         return locals()[name]
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
