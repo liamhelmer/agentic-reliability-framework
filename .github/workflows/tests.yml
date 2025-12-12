@@ -26,6 +26,13 @@ jobs:
         python -m pip install --upgrade pip
         pip install ".[dev]"
     
+    - name: Clean build artifacts before linting
+      run: |
+        rm -rf build/
+        rm -rf dist/
+        rm -rf *.egg-info/
+        find . -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
+    
     - name: Lint with ruff
       run: |
         pip install ruff
