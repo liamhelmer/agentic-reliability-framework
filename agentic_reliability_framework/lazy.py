@@ -3,16 +3,15 @@ Simple lazy loading for ARF - No circular dependencies!
 """
 
 import threading
-from typing import Callable, Optional, TypeVar
-# numpy import removed - not used
+from typing import Callable, Optional, TypeVar, cast
 
 T = TypeVar('T')
 
 class LazyLoader:
     """Simple thread-safe lazy loader"""
-    def __init__(self, loader_func: Callable[[], T]):
+    def __init__(self, loader_func: Callable[[], T]) -> None:  # FIXED: Add return type
         self._loader_func = loader_func
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self._instance: Optional[T] = None
     
     def __call__(self) -> T:
@@ -20,7 +19,8 @@ class LazyLoader:
             with self._lock:
                 if self._instance is None:
                     self._instance = self._loader_func()
-        return self._instance
+        # FIXED: Use cast to help mypy understand the type
+        return cast(T, self._instance)
     
     def reset(self) -> None:
         """Reset instance (for testing)"""
