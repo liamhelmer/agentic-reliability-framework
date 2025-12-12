@@ -3,7 +3,7 @@
 Replace direct references with lazy function calls
 """
 
-import re
+# import re  # Removed: unused import
 
 def replace_in_file():
     with open('arf/app.py', 'r') as f:
@@ -24,7 +24,7 @@ def replace_in_file():
             continue
         
         # Replace thread_safe_index with get_faiss_index()
-        if 'thread_safe_index' in line and not 'def thread_safe_index' in line:
+        if 'thread_safe_index' in line and 'def thread_safe_index' not in line:  # FIXED: not in → not in
             # Simple replacement for most cases
             new_line = line.replace('thread_safe_index', 'get_faiss_index()')
             
@@ -39,7 +39,7 @@ def replace_in_file():
                 replaced.append(original)
         
         # Replace business_metrics with get_business_metrics()
-        elif 'business_metrics' in line and not 'def business_metrics' in line:
+        elif 'business_metrics' in line and 'def business_metrics' not in line:  # FIXED: not in → not in
             new_line = line.replace('business_metrics', 'get_business_metrics()')
             
             if 'business_metrics.' in line:
