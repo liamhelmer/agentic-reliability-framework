@@ -7,7 +7,6 @@ Phase 1: Convert existing FAISS storage to RAG Graph
 import json
 import logging
 import os
-from typing import List, Dict, Any
 from datetime import datetime
 
 from .memory.rag_graph import RAGGraphMemory
@@ -28,7 +27,7 @@ def migrate_v2_to_v3() -> RAGGraphMemory:
     
     try:
         # 1. Load existing FAISS vectors
-        from .lazy import get_faiss_index
+        from ..lazy import get_faiss_index
         faiss_index = get_faiss_index()
         
         if not faiss_index:
