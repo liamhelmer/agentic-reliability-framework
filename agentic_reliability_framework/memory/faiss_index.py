@@ -1,212 +1,199 @@
-"""
-Enhanced FAISS Index for v3 RAG functionality
-Adds search capability to existing ProductionFAISSIndex
-"""
-
-import numpy as np
-import logging
-from typing import List, Tuple, Dict, Any, Optional
-import asyncio
-
-from .constants import MemoryConstants
-
-logger = logging.getLogger(__name__)
-
-
-class EnhancedFAISSIndex:
-    """
-    Enhanced FAISS index with search capability for RAG
+# === FAISS Integration ===
+class ProductionFAISSIndex:
+    """Production-safe FAISS index with single-writer pattern"""
     
-    V3 Feature: Adds thread-safe similarity search
-    """
-    
-    def __init__(self, faiss_index):
-        """
-        Initialize enhanced FAISS index
+    def __init__(self, index, texts: List[str]):
+        self.index = index
+        self.texts = texts
+        self._lock = threading.RLock()
         
-        Args:
-            faiss_index: Existing ProductionFAISSIndex instance
-        """
-        self.faiss = faiss_index
-        self._lock = faiss_index._lock if hasattr(faiss_index, '_lock') else None
-        logger.info("Initialized EnhancedFAISSIndex for v3 RAG search")
-    
-    def search(self, query_vector: np.ndarray, k: int = 5) -> Tuple[np.ndarray, np.ndarray]:
-        """
-        Thread-safe similarity search in FAISS index
+        self._shutdown = threading.Event()
         
-        Args:
-            query_vector: Query embedding vector (shape: [dim] or [1, dim])
-            k: Number of nearest neighbors to return
-            
-        Returns:
-            Tuple of (distances, indices)
-            - distances: Distances to nearest neighbors
-            - indices: FAISS index positions of matches
-            
-        Raises:
-            ValueError: If query vector has wrong dimensions
-            RuntimeError: If search fails
-        """
-        if self._lock:
-            with self._lock:
-                return self._safe_search(query_vector, k)
-        else:
-            return self._safe_search(query_vector, k)
-    
-    def _safe_search(self, query_vector: np.ndarray, k: int) -> Tuple[np.ndarray, np.ndarray]:
-        """Perform search with error handling"""
-        try:
-            # Ensure proper dimensionality
-            if len(query_vector.shape) == 1:
-                query_vector = query_vector.reshape(1, -1)
-            
-            # Validate dimensions
-            if query_vector.shape[1] != MemoryConstants.VECTOR_DIM:
-                raise ValueError(
-                    f"Query vector dimension {query_vector.shape[1]} "
-                    f"does not match index dimension {MemoryConstants.VECTOR_DIM}"
-                )
-            
-            # Limit k to available vectors
-            total_vectors = self.faiss.get_count()
-            actual_k = min(k, total_vectors)
-            
-            if actual_k == 0:
-                logger.debug("No vectors in index, returning empty results")
-                return np.array([]), np.array([])
-            
-            # Perform search
-            distances, indices = self.faiss.index.search(query_vector, actual_k)
-            
-            logger.debug(
-                f"FAISS search completed: k={actual_k}, "
-                f"found={len(indices[0])} results, "
-                f"min_distance={np.min(distances[0]) if len(distances[0]) > 0 else 0:.4f}"
-            )
-            
-            return distances[0], indices[0]
-            
-        except Exception as e:
-            logger.error(f"FAISS search error: {e}", exc_info=True)
-            raise RuntimeError(f"Search failed: {str(e)}")
-    
-    async def search_async(self, query_vector: np.ndarray, k: int = 5) -> Tuple[np.ndarray, np.ndarray]:
-        """
-        Async version of similarity search
+        # Single writer thread
+        self._write_queue: Queue = Queue()
+        self._writer_thread = threading.Thread(
+            target=self._writer_loop,
+            daemon=True,
+            name="FAISSWriter"
+        )
+        self._writer_thread.start()
         
-        Useful for not blocking the main event loop
-        """
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(
-            None, 
-            lambda: self.search(query_vector, k)
+        self._encoder_pool = ProcessPoolExecutor(max_workers=2)
+        
+        logger.info(
+            f"Initialized ProductionFAISSIndex with {len(texts)} vectors"
         )
     
-    def semantic_search(self, query_text: str, k: int = 5) -> List[Dict[str, Any]]:
-        """
-        High-level semantic search with text query
+    def add_async(self, vector: np.ndarray, text: str) -> None:
+        """Add vector and text asynchronously"""
+        self._write_queue.put((vector, text))
+        logger.debug(f"Queued vector for indexing: {text[:50]}...")
+    
+    def _writer_loop(self) -> None:
+        """Single writer thread - processes queue in batches"""
+        batch = []
+        last_save = datetime.datetime.now()
+        save_interval = datetime.timedelta(
+            seconds=Constants.FAISS_SAVE_INTERVAL_SECONDS
+        )
         
-        Args:
-            query_text: Text to search for
-            k: Number of results to return
-            
-        Returns:
-            List of search results with metadata
-        """
+        while not self._shutdown.is_set():
+            try:
+                import queue
+                try:
+                    item = self._write_queue.get(timeout=1.0)
+                    batch.append(item)
+                except queue.Empty:
+                    pass
+                
+                if len(batch) >= Constants.FAISS_BATCH_SIZE or \
+                   (batch and datetime.datetime.now() - last_save > save_interval):
+                    self._flush_batch(batch)
+                    batch = []
+                    
+                    if datetime.datetime.now() - last_save > save_interval:
+                        self._save_atomic()
+                        last_save = datetime.datetime.now()
+                        
+            except Exception as e:
+                logger.error(f"Writer loop error: {e}", exc_info=True)
+    
+    def _flush_batch(self, batch: List[Tuple[np.ndarray, str]]) -> None:
+        """Flush batch to FAISS index"""
+        if not batch:
+            return
+        
         try:
-            # Embed the query text
-            embedding = self._embed_text(query_text)
+            vectors = np.vstack([v for v, _ in batch])
+            texts = [t for _, t in batch]
             
-            # Search for similar vectors
-            distances, indices = self.search(embedding, k)
+            self.index.add(vectors)
             
-            # Get corresponding texts
-            results = []
-            for i, (distance, idx) in enumerate(zip(distances, indices)):
-                if idx == -1:  # FAISS returns -1 for no match
-                    continue
-                
-                # Get text from FAISS storage
-                text = self._get_text_by_index(idx)
-                
-                if text:
-                    results.append({
-                        "index": int(idx),
-                        "distance": float(distance),
-                        "similarity": float(1.0 / (1.0 + distance)),  # Convert distance to similarity
-                        "text": text,
-                        "rank": i + 1
-                    })
+            with self._lock:
+                self.texts.extend(texts)
             
-            # Sort by similarity (highest first)
-            results.sort(key=lambda x: x["similarity"], reverse=True)
-            
-            logger.info(
-                f"Semantic search for '{query_text[:50]}...' "
-                f"found {len(results)} results"
-            )
-            
-            return results
+            logger.info(f"Flushed batch of {len(batch)} vectors to FAISS index")
             
         except Exception as e:
-            logger.error(f"Semantic search error: {e}", exc_info=True)
-            return []
+            logger.error(f"Error flushing batch: {e}", exc_info=True)
     
-    def _embed_text(self, text: str) -> np.ndarray:
-        """Embed text into vector"""
-        # Use existing embedding model or create simple embedding
+    def _save_atomic(self) -> None:
+        """Atomic save with fsync for durability"""
         try:
-            # Try to use existing embedding model
-            if hasattr(self.faiss, '_encoder_pool'):
-                loop = asyncio.get_event_loop()
-                from sentence_transformers import SentenceTransformer
-                model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
-                embedding = loop.run_until_complete(
-                    loop.run_in_executor(
-                        self.faiss._encoder_pool,
-                        model.encode,
-                        [text]
-                    )
-                )
-                return np.array(embedding, dtype=np.float32)
-        except Exception:
-            pass
-        
-        # Fallback: create simple embedding from text hash
-        # This is for development only - in production use proper embedding model
-        import hashlib
-        hash_val = int(hashlib.sha256(text.encode()).hexdigest()[:8], 16)
-        np.random.seed(hash_val)
-        
-        # Create random embedding with correct dimension
-        embedding = np.random.randn(1, MemoryConstants.VECTOR_DIM).astype(np.float32)
-        
-        # Normalize to unit length
-        embedding = embedding / np.linalg.norm(embedding)
-        
-        return embedding[0]
+            import faiss
+            
+            with tempfile.NamedTemporaryFile(
+                mode='wb',
+                delete=False,
+                dir=os.path.dirname(config.INDEX_FILE),
+                prefix='index_',
+                suffix='.tmp'
+            ) as tmp:
+                temp_path = tmp.name
+            
+            faiss.write_index(self.index, temp_path)
+            
+            with open(temp_path, 'r+b') as f:
+                f.flush()
+                os.fsync(f.fileno())
+            
+            os.replace(temp_path, config.INDEX_FILE)
+            
+            with self._lock:
+                texts_copy = self.texts.copy()
+            
+            with atomicwrites.atomic_write(
+                config.TEXTS_FILE,
+                mode='w',
+                overwrite=True
+            ) as f:
+                json.dump(texts_copy, f)
+            
+            logger.info(
+                f"Atomically saved FAISS index with {len(texts_copy)} vectors"
+            )
+            
+        except Exception as e:
+            logger.error(f"Error saving index: {e}", exc_info=True)
     
-    def _get_text_by_index(self, index: int) -> Optional[str]:
-        """Get text by FAISS index"""
-        if hasattr(self.faiss, 'texts') and index < len(self.faiss.texts):
-            return self.faiss.texts[index]
-        return None
+    def get_count(self) -> int:
+        """Get total count of vectors"""
+        with self._lock:
+            return len(self.texts) + self._write_queue.qsize()
     
-    def get_stats(self) -> Dict[str, Any]:
-        """Get index statistics"""
-        stats = {
-            "total_vectors": self.faiss.get_count(),
-            "vector_dimension": MemoryConstants.VECTOR_DIM,
-            "index_type": type(self.faiss.index).__name__,
-            "search_capability": True,
-            "v3_enhanced": True,
-        }
+    def force_save(self) -> None:
+        """Force immediate save of pending vectors"""
+        logger.info("Forcing FAISS index save...")
         
-        # Add FAISS-specific stats if available
-        if hasattr(self.faiss.index, 'ntotal'):
-            stats["faiss_ntotal"] = self.faiss.index.ntotal
-        if hasattr(self.faiss.index, 'd'):
-            stats["faiss_dimension"] = self.faiss.index.d
+        timeout = 10.0
+        start = datetime.datetime.now()
         
-        return stats
+        while not self._write_queue.empty():
+            if (datetime.datetime.now() - start).total_seconds() > timeout:
+                logger.warning("Force save timeout - queue not empty")
+                break
+            import time
+            time.sleep(0.1)
+        
+        self._save_atomic()
+    
+    def shutdown(self) -> None:
+        """Graceful shutdown"""
+        logger.info("Shutting down FAISS index...")
+        self._shutdown.set()
+        self.force_save()
+        self._writer_thread.join(timeout=5.0)
+        self._encoder_pool.shutdown(wait=True)
+
+
+# === FAISS & Embeddings Setup ===
+model = None
+
+def get_model():
+    """Lazy-load SentenceTransformer model on first use"""
+    global model
+    if model is None:
+        from sentence_transformers import SentenceTransformer
+        logger.info("Loading SentenceTransformer model...")
+        model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
+        logger.info("Model loaded on demand")
+    return model
+
+try:
+    from sentence_transformers import SentenceTransformer
+    import faiss
+    
+    if os.path.exists(config.INDEX_FILE):
+        logger.info(f"Loading existing FAISS index from {config.INDEX_FILE}")
+        index = faiss.read_index(config.INDEX_FILE)
+        
+        if index.d != Constants.VECTOR_DIM:
+            logger.warning(
+                f"Index dimension mismatch: {index.d} != {Constants.VECTOR_DIM}. "
+                f"Creating new index."
+            )
+            index = faiss.IndexFlatL2(Constants.VECTOR_DIM)
+            incident_texts = []
+        else:
+            with open(config.TEXTS_FILE, "r") as f:
+                incident_texts = json.load(f)
+            logger.info(f"Loaded {len(incident_texts)} incident texts")
+    else:
+        logger.info("Creating new FAISS index")
+        index = faiss.IndexFlatL2(Constants.VECTOR_DIM)
+        incident_texts = []
+    
+    thread_safe_index = ProductionFAISSIndex(index, incident_texts)
+    
+except ImportError as e:
+    logger.warning(f"FAISS or SentenceTransformers not available: {e}")
+    index = None
+    incident_texts = []
+    model = None
+    thread_safe_index = None
+except Exception as e:
+    logger.error(f"Error initializing FAISS: {e}", exc_info=True)
+    index = None
+    incident_texts = []
+    model = None
+    thread_safe_index = None
