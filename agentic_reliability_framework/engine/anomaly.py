@@ -6,7 +6,7 @@ Extracted from app.py for modularity
 import numpy as np
 import threading
 import logging
-from typing import Dict, List
+from typing import Dict, List # noqa: F401
 from collections import deque
 
 from ..models import ReliabilityEvent
