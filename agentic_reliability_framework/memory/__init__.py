@@ -4,7 +4,7 @@ Updated for v3
 """
 
 from .faiss_index import ProductionFAISSIndex
-from .enhanced_faiss import EnhancedFAISSIndex  # NEW
+from .enhanced_faiss import EnhancedFAISSIndex
 from .rag_graph import RAGGraphMemory
 from .models import (
     IncidentNode, OutcomeNode, GraphEdge,
@@ -14,7 +14,7 @@ from .constants import MemoryConstants
 
 __all__ = [
     'ProductionFAISSIndex',
-    'EnhancedFAISSIndex',  # NEW
+    'EnhancedFAISSIndex',
     'RAGGraphMemory',
     'IncidentNode',
     'OutcomeNode', 
