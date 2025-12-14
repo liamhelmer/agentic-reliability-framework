@@ -15,7 +15,6 @@ from abc import ABC, abstractmethod
 import uuid
 
 from ..config import config
-from ..models import HealingAction
 
 logger = logging.getLogger(__name__)
 
