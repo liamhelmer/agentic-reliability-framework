@@ -9,7 +9,6 @@ from typing import List, Tuple, Dict, Any, Optional
 import asyncio
 
 from .constants import MemoryConstants
-from ..config import config
 
 logger = logging.getLogger(__name__)
 
@@ -171,7 +170,7 @@ class EnhancedFAISSIndex:
                     )
                 )
                 return np.array(embedding, dtype=np.float32)
-        except:
+        except Exception:
             pass
         
         # Fallback: create simple embedding from text hash
