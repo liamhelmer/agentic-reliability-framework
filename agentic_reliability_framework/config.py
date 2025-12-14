@@ -4,7 +4,7 @@ Updated with v3 RAG Graph, MCP Server, and Learning Loop features
 """
 
 import os
-from typing import Optional, Dict, Any
+from typing import Dict, Any
 from pydantic import BaseModel, Field, ConfigDict
 from dotenv import load_dotenv
 
