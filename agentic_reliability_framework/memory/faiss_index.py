@@ -1,6 +1,6 @@
 """
-Production FAISS Index for v2/v3 compatibility
-Extracted from app.py for proper module structure
+Production FAISS Index - Base v2 FAISS with single-writer pattern
+This is the ORIGINAL v2 FAISS index that RAGGraphMemory expects
 """
 
 import threading
@@ -16,23 +16,8 @@ from queue import Queue
 from concurrent.futures import ProcessPoolExecutor
 
 from ..config import config
-from .constants import MemoryConstants
 
 logger = logging.getLogger(__name__)
-
-try:
-    import faiss
-    FAISS_AVAILABLE = True
-except ImportError:
-    FAISS_AVAILABLE = False
-    logger.warning("FAISS not available. Search functionality will be limited.")
-
-try:
-    import atomicwrites
-    ATOMIC_WRITES_AVAILABLE = True
-except ImportError:
-    ATOMIC_WRITES_AVAILABLE = False
-    logger.warning("atomicwrites not available. Using regular file writes.")
 
 
 class ProductionFAISSIndex:
@@ -69,6 +54,9 @@ class ProductionFAISSIndex:
         """Single writer thread - processes queue in batches"""
         batch = []
         last_save = datetime.datetime.now()
+        
+        # Use config value
+        from .constants import MemoryConstants
         save_interval = datetime.timedelta(
             seconds=MemoryConstants.FAISS_SAVE_INTERVAL_SECONDS
         )
@@ -116,8 +104,8 @@ class ProductionFAISSIndex:
     def _save_atomic(self) -> None:
         """Atomic save with fsync for durability"""
         try:
-            if not FAISS_AVAILABLE:
-                return
+            import faiss
+            import atomicwrites
             
             with tempfile.NamedTemporaryFile(
                 mode='wb',
@@ -139,17 +127,12 @@ class ProductionFAISSIndex:
             with self._lock:
                 texts_copy = self.texts.copy()
             
-            # Use atomic writes if available
-            if ATOMIC_WRITES_AVAILABLE:
-                with atomicwrites.atomic_write(
-                    config.incident_texts_file,
-                    mode='w',
-                    overwrite=True
-                ) as f:
-                    json.dump(texts_copy, f)
-            else:
-                with open(config.incident_texts_file, 'w') as f:
-                    json.dump(texts_copy, f)
+            with atomicwrites.atomic_write(
+                config.incident_texts_file,
+                mode='w',
+                overwrite=True
+            ) as f:
+                json.dump(texts_copy, f)
             
             logger.info(
                 f"Atomically saved FAISS index with {len(texts_copy)} vectors"
@@ -191,42 +174,7 @@ class ProductionFAISSIndex:
         vector = np.array(embedding, dtype=np.float32).reshape(1, -1)
         self.add_async(vector, text)
         return len(self.texts) - 1
-
-
-# Factory function for lazy loading
-def create_faiss_index():
-    """Create FAISS index with proper error handling"""
-    if not FAISS_AVAILABLE:
-        logger.warning("FAISS not available. Creating dummy index.")
-        return None
     
-    try:
-        if os.path.exists(config.index_file):
-            logger.info(f"Loading existing FAISS index from {config.index_file}")
-            index = faiss.read_index(config.index_file)
-            
-            if index.d != MemoryConstants.VECTOR_DIM:
-                logger.warning(
-                    f"Index dimension mismatch: {index.d} != {MemoryConstants.VECTOR_DIM}. "
-                    f"Creating new index."
-                )
-                index = faiss.IndexFlatL2(MemoryConstants.VECTOR_DIM)
-                incident_texts = []
-            else:
-                try:
-                    with open(config.incident_texts_file, "r") as f:
-                        incident_texts = json.load(f)
-                    logger.info(f"Loaded {len(incident_texts)} incident texts")
-                except FileNotFoundError:
-                    logger.warning("Incident texts file not found, starting fresh")
-                    incident_texts = []
-        else:
-            logger.info("Creating new FAISS index")
-            index = faiss.IndexFlatL2(MemoryConstants.VECTOR_DIM)
-            incident_texts = []
-        
-        return ProductionFAISSIndex(index, incident_texts)
-        
-    except Exception as e:
-        logger.error(f"Error creating FAISS index: {e}", exc_info=True)
-        return None
+    def get_index(self):
+        """Get the underlying FAISS index"""
+        return self.index
