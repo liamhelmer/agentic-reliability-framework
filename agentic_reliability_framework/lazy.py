@@ -1,11 +1,8 @@
 """
-Updated Lazy Loader for ARF v3
-
-Adds support for v3 components with graceful fallback
+Simple lazy loading for ARF - No circular dependencies!
 """
 
 import threading
-import sys
 import logging
 from typing import Callable, Optional, Any, Dict
 
@@ -34,17 +31,12 @@ class LazyLoader:
 
 # ========== MODULE-LEVEL IMPORTS ==========
 
-def _load_engine() -> Any:
-    """Import and create appropriate reliability engine"""
-    # Use engine factory for v3 support
-    from .engine_factory import EngineFactory
-    return EngineFactory.create_engine()
-
 def _load_rag_graph() -> Optional[Any]:
     """Create RAGGraphMemory for v3 features with graceful fallback"""
     try:
         from .memory.rag_graph import RAGGraphMemory
-        from .memory.faiss_index import ProductionFAISSIndex
+        from ..config import config
+        from . import get_faiss_index
         
         # Get FAISS index first
         faiss_index = get_faiss_index()
@@ -69,6 +61,7 @@ def _load_mcp_server() -> Optional[Any]:
     """Create MCP Server for v3 features with graceful fallback"""
     try:
         from .mcp_server import MCPServer, MCPMode
+        from ..config import config
         
         if config.mcp_enabled:
             mcp_mode = MCPMode(config.mcp_mode)
@@ -89,16 +82,11 @@ def _load_mcp_server() -> Optional[Any]:
 
 # ========== CREATE LAZY LOADERS ==========
 
-engine_loader = LazyLoader(_load_engine)
 rag_graph_loader = LazyLoader(_load_rag_graph)
 mcp_server_loader = LazyLoader(_load_mcp_server)
 
 
 # ========== PUBLIC API ==========
-
-def get_engine() -> Any:
-    """Get or create reliability engine (v2 or v3 based on config)"""
-    return engine_loader()
 
 def get_rag_graph() -> Optional[Any]:
     """
@@ -120,6 +108,7 @@ def get_mcp_server() -> Optional[Any]:
 
 def get_v3_status() -> Dict[str, Any]:
     """Get v3 feature status"""
+    from ..config import config
     from .engine_factory import EngineFactory
     
     return {
