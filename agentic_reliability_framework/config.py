@@ -4,7 +4,7 @@ Updated with v3 RAG Graph features
 """
 
 import os
-from typing import Optional
+from typing import Optional  # noqa: F401
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 
@@ -116,11 +116,11 @@ class Config(BaseModel):
             if env_value is not None:
                 # Convert string to appropriate type
                 field_type = cls.__fields__[field_name].type_
-                if field_type == bool:
+                if field_type is bool:  # FIXED: Use 'is' instead of '=='
                     env_vars[field_name] = env_value.lower() in ("true", "1", "yes", "y", "t")
-                elif field_type == int:
+                elif field_type is int:  # FIXED: Use 'is' instead of '=='
                     env_vars[field_name] = int(env_value)
-                elif field_type == float:
+                elif field_type is float:  # FIXED: Use 'is' instead of '=='
                     env_vars[field_name] = float(env_value)
                 else:
                     env_vars[field_name] = env_value
