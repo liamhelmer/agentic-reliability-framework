@@ -250,4 +250,232 @@ class RAGGraphMemory:
             try:
                 import asyncio
                 loop = asyncio.get_event_loop()
-                faiss_results = loop.run_until_complete
+                faiss_results = loop.run_until_complete(
+                    self.faiss.find_similar_incidents(
+                        query_text, 
+                        k=k * 2,  # Get more for filtering
+                        min_similarity=MemoryConstants.SIMILARITY_THRESHOLD
+                    )
+                )
+            except (RuntimeError, ImportError):
+                # Fallback to sync search
+                faiss_results = self.faiss.find_similar_by_metrics(
+                    query_event.component,
+                    query_event.latency_p99,
+                    query_event.error_rate,
+                    k=k * 2
+                )
+            
+            # 2. Load incident nodes from FAISS results
+            for result in faiss_results:
+                # Look for incident by matching metrics
+                for node in self.incident_nodes.values():
+                    if (abs(node.metrics["latency_ms"] - result.get("latency", 0)) < 10 and
+                        abs(node.metrics["error_rate"] - result.get("error_rate", 0)) < 0.01 and
+                        node.component == result.get("component")):
+                        
+                        # Update FAISS index if not set
+                        if node.faiss_index is None and "faiss_index" in result:
+                            node.faiss_index = result["faiss_index"]
+                        
+                        similar_incidents.append(node)
+                        break
+            
+            # 3. Graph expansion (get outcomes)
+            expanded_incidents = []
+            for incident in similar_incidents[:k]:  # Limit to k
+                # Get outcomes for this incident
+                incident.outcomes = self._get_outcomes(incident.incident_id)
+                expanded_incidents.append(incident)
+            
+            # 4. Update cache
+            with self._lock:
+                similarity_results = [
+                    SimilarityResult(
+                        incident_node=incident,
+                        similarity_score=0.8,  # Placeholder - would come from FAISS
+                        raw_score=0.9,  # Placeholder
+                        faiss_index=incident.faiss_index or 0
+                    )
+                    for incident in expanded_incidents
+                ]
+                
+                self._similarity_cache[cache_key] = similarity_results
+                self._similarity_cache.move_to_end(cache_key)
+                
+                # Evict oldest if cache full
+                if len(self._similarity_cache) > self._max_cache_size:
+                    oldest_key, _ = self._similarity_cache.popitem(last=False)
+                    logger.debug(f"Evicted cache entry: {oldest_key}")
+                
+                self._stats["similarity_searches"] += 1
+                self._stats["last_search_time"] = datetime.now().isoformat()
+            
+            logger.info(
+                f"Found {len(expanded_incidents)} similar incidents for {query_event.component}, "
+                f"cache_size={len(self._similarity_cache)}"
+            )
+            
+            return expanded_incidents
+            
+        except Exception as e:
+            logger.error(f"Error in find_similar: {e}", exc_info=True)
+            return []
+    
+    def _get_outcomes(self, incident_id: str) -> List[OutcomeNode]:
+        """
+        Get outcomes for an incident
+        
+        Args:
+            incident_id: Incident ID to get outcomes for
+            
+        Returns:
+            List of OutcomeNodes for this incident
+        """
+        outcomes = []
+        for edge in self.edges:
+            if (edge.source_id == incident_id and 
+                edge.edge_type == EdgeType.RESOLVED_BY):
+                outcome = self.outcome_nodes.get(edge.target_id)
+                if outcome:
+                    outcomes.append(outcome)
+        return outcomes
+    
+    def get_historical_effectiveness(self, action: str, component: str = None) -> Dict[str, Any]:
+        """
+        Get historical effectiveness of an action
+        
+        Args:
+            action: Action to check effectiveness for
+            component: Optional component filter
+        
+        Returns:
+            Dictionary with effectiveness statistics
+        """
+        successful = 0
+        total = 0
+        avg_resolution_time = 0.0
+        
+        for outcome in self.outcome_nodes.values():
+            if action in outcome.actions_taken:
+                if component and self.incident_nodes.get(outcome.incident_id):
+                    incident = self.incident_nodes[outcome.incident_id]
+                    if incident.component != component:
+                        continue
+                
+                total += 1
+                if outcome.success:
+                    successful += 1
+                    avg_resolution_time += outcome.resolution_time_minutes
+        
+        if successful > 0:
+            avg_resolution_time /= successful
+        
+        return {
+            "action": action,
+            "total_uses": total,
+            "successful_uses": successful,
+            "success_rate": successful / total if total > 0 else 0.0,
+            "avg_resolution_time_minutes": avg_resolution_time,
+            "component_filter": component
+        }
+    
+    def get_graph_stats(self) -> Dict[str, Any]:
+        """Get statistics about the RAG graph"""
+        with self._lock:
+            return {
+                "incident_nodes": len(self.incident_nodes),
+                "outcome_nodes": len(self.outcome_nodes),
+                "edges": len(self.edges),
+                "similarity_cache_size": len(self._similarity_cache),
+                "cache_hit_rate": (
+                    self._stats["cache_hits"] / self._stats["similarity_searches"] 
+                    if self._stats["similarity_searches"] > 0 else 0
+                ),
+                "stats": self._stats,
+                "max_incident_nodes": MemoryConstants.MAX_INCIDENT_NODES,
+                "max_outcome_nodes": MemoryConstants.MAX_OUTCOME_NODES,
+                "graph_cache_size": self._max_cache_size,
+                "is_enabled": self.is_enabled()
+            }
+    
+    def clear_cache(self) -> None:
+        """Clear similarity cache"""
+        with self._lock:
+            self._similarity_cache.clear()
+            logger.info("Cleared RAG graph similarity cache")
+    
+    def export_graph(self, filepath: str) -> bool:
+        """
+        Export graph to JSON file
+        
+        Args:
+            filepath: Path to export file
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            data = {
+                "incident_nodes": [node.to_dict() for node in self.incident_nodes.values()],
+                "outcome_nodes": [node.to_dict() for node in self.outcome_nodes.values()],
+                "edges": [edge.to_dict() for edge in self.edges],
+                "export_timestamp": datetime.now().isoformat(),
+                "stats": self.get_graph_stats()
+            }
+            
+            with open(filepath, 'w') as f:
+                json.dump(data, f, indent=2)
+            
+            logger.info(f"Exported RAG graph to {filepath}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error exporting graph: {e}", exc_info=True)
+            return False
+    
+    def import_graph(self, filepath: str) -> bool:
+        """
+        Import graph from JSON file
+        
+        Args:
+            filepath: Path to import file
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            with open(filepath, 'r') as f:
+                data = json.load(f)
+            
+            with self._lock:
+                # Clear existing data
+                self.incident_nodes.clear()
+                self.outcome_nodes.clear()
+                self.edges.clear()
+                
+                # Import nodes
+                for node_data in data.get("incident_nodes", []):
+                    node = IncidentNode.from_dict(node_data)
+                    self.incident_nodes[node.incident_id] = node
+                
+                for node_data in data.get("outcome_nodes", []):
+                    node = OutcomeNode.from_dict(node_data)
+                    self.outcome_nodes[node.outcome_id] = node
+                
+                # Import edges
+                for edge_data in data.get("edges", []):
+                    edge = GraphEdge.from_dict(edge_data)
+                    self.edges.append(edge)
+                
+                # Update stats
+                self._stats["total_incidents"] = len(self.incident_nodes)
+                self._stats["total_outcomes"] = len(self.outcome_nodes)
+                self._stats["total_edges"] = len(self.edges)
+            
+            logger.info(f"Imported RAG graph from {filepath}: {len(self.incident_nodes)} incidents")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error importing graph: {e}", exc_info=True)
+            return False
