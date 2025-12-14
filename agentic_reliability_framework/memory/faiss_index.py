@@ -11,7 +11,7 @@ import json
 import os
 import tempfile
 import time
-from typing import List, Tuple, Optional
+from typing import List, Tuple
 from queue import Queue
 from concurrent.futures import ProcessPoolExecutor
 
