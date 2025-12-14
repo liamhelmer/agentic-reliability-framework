@@ -11,7 +11,7 @@ import logging
 import hashlib
 import json
 from typing import Dict, List, Optional, Tuple, Any
-from datetime import datetime, timedelta
+from datetime import datetime
 from collections import OrderedDict
 
 from .faiss_index import ProductionFAISSIndex
@@ -97,24 +97,6 @@ class RAGGraphMemory:
         data = f"{source_id}:{target_id}:{edge_type.value}:{datetime.now().isoformat()}"
         return f"edge_{hashlib.sha256(data.encode()).hexdigest()[:16]}"
     
-    def _embed_incident(self, event: ReliabilityEvent, analysis: Dict[str, Any]) -> np.ndarray:
-        """
-        Create embedding for incident
-        
-        Note: This uses the existing FAISS encoding pipeline
-        """
-        # Create text representation for embedding
-        text = (
-            f"{event.component} {event.latency_p99} {event.error_rate} "
-            f"severity:{event.severity.value} "
-            f"analysis:{json.dumps(analysis)[:200]}"
-        )
-        
-        # Use FAISS's existing encoder pool (non-blocking)
-        # This is already implemented in ProductionFAISSIndex.find_similar_incidents
-        # We'll reuse that infrastructure
-        return None  # Placeholder - actual embedding done in FAISS
-    
     def store_incident(self, event: ReliabilityEvent, analysis: Dict[str, Any]) -> str:
         """
         Convert event+analysis to IncidentNode and store in graph
@@ -133,10 +115,6 @@ class RAGGraphMemory:
             if incident_id in self.incident_nodes:
                 logger.debug(f"Incident {incident_id} already exists, skipping")
                 return incident_id
-            
-            # Create embedding and store in FAISS
-            # Note: FAISS storage happens asynchronously via add_async
-            # We'll store metadata immediately, FAISS vector will be added later
             
             # Create IncidentNode
             node = IncidentNode(
@@ -164,15 +142,6 @@ class RAGGraphMemory:
             # Store in memory
             self.incident_nodes[incident_id] = node
             self._stats["total_incidents"] += 1
-            
-            # Create text for FAISS storage (async)
-            faiss_text = (
-                f"{event.component} {event.latency_p99} {event.error_rate} "
-                f"{json.dumps(analysis)[:500]}"
-            )
-            
-            # Note: FAISS vector will be added asynchronously via existing pipeline
-            # The embedding_id will be updated later when FAISS returns it
             
             logger.info(
                 f"Stored incident {incident_id} in RAG graph: {event.component}, "
@@ -266,7 +235,7 @@ class RAGGraphMemory:
                 incidents = [result.incident_node for result in cached_results[:k]]
                 logger.debug(f"Cache hit for {cache_key}, returning {len(incidents)} incidents")
                 return incidents
-            
+        
         try:
             # 1. FAISS similarity search
             query_text = (
