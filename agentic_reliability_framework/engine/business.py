@@ -5,8 +5,8 @@ Extracted from app.py for modularity
 
 import threading
 import logging
-from typing import Dict, List, Any, Optional
-from collections import deque
+from typing import Dict, List, Any, Optional  # noqa: F401
+from collections import deque  # noqa: F401
 
 from ..models import ReliabilityEvent
 from ..config import config
