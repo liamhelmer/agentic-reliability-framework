@@ -79,11 +79,60 @@ def _load_mcp_server() -> Optional[Any]:
         logger.error(f"Error loading MCPServer: {e}", exc_info=True)
         return None
 
+# ========== EXISTING LAZY LOADERS ==========
+
+# These should already exist in your codebase
+def _load_engine() -> Any:
+    """Load the reliability engine"""
+    try:
+        from .app import EnhancedReliabilityEngine
+        logger.info("Loading EnhancedReliabilityEngine")
+        return EnhancedReliabilityEngine()
+    except Exception as e:
+        logger.error(f"Error loading engine: {e}")
+        return None
+
+def _load_agents() -> Any:
+    """Load agent orchestrator"""
+    try:
+        from .app import OrchestrationManager
+        logger.info("Loading OrchestrationManager")
+        return OrchestrationManager()
+    except Exception as e:
+        logger.error(f"Error loading agents: {e}")
+        return None
+
+def _load_faiss_index() -> Any:
+    """Load FAISS index"""
+    try:
+        from .memory.faiss_index import create_faiss_index
+        logger.info("Loading FAISS index")
+        return create_faiss_index()
+    except Exception as e:
+        logger.error(f"Error loading FAISS index: {e}")
+        return None
+
+def _load_business_metrics() -> Any:
+    """Load business metrics tracker"""
+    try:
+        from .engine.business import BusinessMetricsTracker
+        logger.info("Loading BusinessMetricsTracker")
+        return BusinessMetricsTracker()
+    except Exception as e:
+        logger.error(f"Error loading business metrics: {e}")
+        return None
+
 
 # ========== CREATE LAZY LOADERS ==========
 
 rag_graph_loader = LazyLoader(_load_rag_graph)
 mcp_server_loader = LazyLoader(_load_mcp_server)
+
+# Add these new loaders
+engine_loader = LazyLoader(_load_engine)
+agents_loader = LazyLoader(_load_agents)
+faiss_index_loader = LazyLoader(_load_faiss_index)
+business_metrics_loader = LazyLoader(_load_business_metrics)
 
 
 # ========== PUBLIC API ==========
@@ -106,6 +155,51 @@ def get_mcp_server() -> Optional[Any]:
     """
     return mcp_server_loader()
 
+def get_engine() -> Optional[Any]:
+    """
+    Get or create reliability engine
+    
+    Returns:
+        EnhancedReliabilityEngine instance or None if not available
+    """
+    return engine_loader()
+
+def get_agents() -> Optional[Any]:
+    """
+    Get or create agent orchestrator
+    
+    Returns:
+        OrchestrationManager instance or None if not available
+    """
+    return agents_loader()
+
+def get_faiss_index() -> Optional[Any]:
+    """
+    Get or create FAISS index
+    
+    Returns:
+        ProductionFAISSIndex instance or None if not available
+    """
+    return faiss_index_loader()
+
+def get_business_metrics() -> Optional[Any]:
+    """
+    Get or create business metrics tracker
+    
+    Returns:
+        BusinessMetricsTracker instance or None if not available
+    """
+    return business_metrics_loader()
+
+def enhanced_engine() -> Optional[Any]:
+    """
+    Get enhanced reliability engine (alias for get_engine)
+    
+    Returns:
+        EnhancedReliabilityEngine instance or None if not available
+    """
+    return get_engine()
+
 def get_v3_status() -> Dict[str, Any]:
     """Get v3 feature status"""
     from ..config import config
@@ -120,30 +214,3 @@ def get_v3_status() -> Dict[str, Any]:
         "learning_enabled": config.learning_enabled,
         "rollout_percentage": config.rollout_percentage,
     }
-
-# ========== ADD THESE TO lazy.py ==========
-
-# These functions should already exist elsewhere, export them here
-def get_engine():
-    """Get the reliability engine"""
-    from .app import get_engine as _get_engine
-    return _get_engine()
-
-def get_agents():
-    """Get the agent orchestrator"""
-    from .app import get_agents as _get_agents
-    return _get_agents()
-
-def get_faiss_index():
-    """Get the FAISS index instance"""
-    from .app import get_faiss_index as _get_faiss_index
-    return _get_faiss_index()
-
-def get_business_metrics():
-    """Get business metrics tracker"""
-    from .app import get_business_metrics as _get_business_metrics
-    return _get_business_metrics()
-
-def enhanced_engine():
-    """Get enhanced reliability engine"""
-    return get_engine()
