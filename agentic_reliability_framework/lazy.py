@@ -1,22 +1,30 @@
 """
 Simple lazy loading for ARF - No circular dependencies!
+Pythonic improvements with type safety
 """
 
 import threading
 import logging
-from typing import Callable, Optional, Any, Dict
+from typing import Callable, Optional, Dict, Any, TypeVar
+from contextlib import suppress
+
+from .engine.interfaces import ReliabilityEngineProtocol, MCPProtocol, RAGProtocol
 
 logger = logging.getLogger(__name__)
 
+T = TypeVar('T')
+
 
 class LazyLoader:
-    """Simple thread-safe lazy loader"""
-    def __init__(self, loader_func: Callable[[], Any]) -> None:
+    """Thread-safe lazy loader with better typing support"""
+    
+    def __init__(self, loader_func: Callable[[], Optional[T]]) -> None:
         self._loader_func = loader_func
         self._lock = threading.RLock()
-        self._instance: Optional[Any] = None
+        self._instance: Optional[T] = None
     
-    def __call__(self) -> Any:
+    def __call__(self) -> Optional[T]:
+        """Get or create instance (double-checked locking)"""
         if self._instance is None:
             with self._lock:
                 if self._instance is None:
@@ -27,19 +35,23 @@ class LazyLoader:
         """Reset instance (for testing)"""
         with self._lock:
             self._instance = None
+    
+    @property
+    def is_loaded(self) -> bool:
+        """Check if instance is loaded"""
+        return self._instance is not None
 
 
 # ========== MODULE-LEVEL IMPORTS ==========
 
-def _load_rag_graph() -> Optional[Any]:
+def _load_rag_graph() -> Optional[RAGProtocol]:
     """Create RAGGraphMemory for v3 features with graceful fallback"""
-    try:
+    with suppress(ImportError, Exception):
         from .memory.rag_graph import RAGGraphMemory
         from ..config import config
-        from . import get_faiss_index
         
-        # Get FAISS index first
-        faiss_index = get_faiss_index()
+        # Get FAISS index first (could return None)
+        faiss_index = _load_faiss_index_safe()
         
         if faiss_index and config.rag_enabled:
             # Create RAG graph with the FAISS index
@@ -48,18 +60,13 @@ def _load_rag_graph() -> Optional[Any]:
             return rag_graph
         else:
             logger.debug("RAG disabled or FAISS index not available")
-            return None
-            
-    except ImportError as e:
-        logger.warning(f"RAGGraphMemory not available: {e}")
-        return None
-    except Exception as e:
-        logger.error(f"Error loading RAGGraphMemory: {e}", exc_info=True)
-        return None
+    
+    return None
 
-def _load_mcp_server() -> Optional[Any]:
+
+def _load_mcp_server() -> Optional[MCPProtocol]:
     """Create MCP Server for v3 features with graceful fallback"""
-    try:
+    with suppress(ImportError, Exception):
         from .mcp_server import MCPServer, MCPMode
         from ..config import config
         
@@ -70,74 +77,74 @@ def _load_mcp_server() -> Optional[Any]:
             return mcp_server
         else:
             logger.debug("MCP disabled")
-            return None
-            
-    except ImportError as e:
-        logger.warning(f"MCPServer not available: {e}")
-        return None
-    except Exception as e:
-        logger.error(f"Error loading MCPServer: {e}", exc_info=True)
-        return None
+    
+    return None
 
-# ========== EXISTING LAZY LOADERS ==========
 
-# These should already exist in your codebase
-def _load_engine() -> Any:
-    """Load the reliability engine"""
-    try:
+def _load_engine() -> Optional[ReliabilityEngineProtocol]:
+    """Load the reliability engine without circular imports"""
+    with suppress(ImportError, Exception):
+        # Use a factory pattern to avoid direct import
+        from .engine_factory import create_engine
+        logger.info("Loading reliability engine via factory")
+        return create_engine()
+    
+    # Fallback to direct import only if factory fails
+    with suppress(ImportError, Exception):
         from .app import EnhancedReliabilityEngine
-        logger.info("Loading EnhancedReliabilityEngine")
+        logger.info("Loading EnhancedReliabilityEngine directly")
         return EnhancedReliabilityEngine()
-    except Exception as e:
-        logger.error(f"Error loading engine: {e}")
-        return None
+    
+    logger.error("Failed to load reliability engine")
+    return None
 
-def _load_agents() -> Any:
+
+def _load_agents() -> Optional[Any]:
     """Load agent orchestrator"""
-    try:
+    with suppress(ImportError, Exception):
         from .app import OrchestrationManager
         logger.info("Loading OrchestrationManager")
         return OrchestrationManager()
-    except Exception as e:
-        logger.error(f"Error loading agents: {e}")
-        return None
+    
+    logger.error("Failed to load agents")
+    return None
 
-def _load_faiss_index() -> Any:
-    """Load FAISS index"""
-    try:
+
+def _load_faiss_index_safe() -> Optional[Any]:
+    """Load FAISS index with safe error handling"""
+    with suppress(ImportError, Exception):
         from .memory.faiss_index import create_faiss_index
         logger.info("Loading FAISS index")
         return create_faiss_index()
-    except Exception as e:
-        logger.error(f"Error loading FAISS index: {e}")
-        return None
+    
+    logger.warning("FAISS index not available")
+    return None
 
-def _load_business_metrics() -> Any:
+
+def _load_business_metrics() -> Optional[Any]:
     """Load business metrics tracker"""
-    try:
+    with suppress(ImportError, Exception):
         from .engine.business import BusinessMetricsTracker
         logger.info("Loading BusinessMetricsTracker")
         return BusinessMetricsTracker()
-    except Exception as e:
-        logger.error(f"Error loading business metrics: {e}")
-        return None
+    
+    logger.warning("Business metrics tracker not available")
+    return None
 
 
 # ========== CREATE LAZY LOADERS ==========
 
 rag_graph_loader = LazyLoader(_load_rag_graph)
 mcp_server_loader = LazyLoader(_load_mcp_server)
-
-# Add these new loaders
 engine_loader = LazyLoader(_load_engine)
 agents_loader = LazyLoader(_load_agents)
-faiss_index_loader = LazyLoader(_load_faiss_index)
+faiss_index_loader = LazyLoader(_load_faiss_index_safe)
 business_metrics_loader = LazyLoader(_load_business_metrics)
 
 
 # ========== PUBLIC API ==========
 
-def get_rag_graph() -> Optional[Any]:
+def get_rag_graph() -> Optional[RAGProtocol]:
     """
     Get or create RAGGraphMemory (v3 feature)
     
@@ -146,7 +153,8 @@ def get_rag_graph() -> Optional[Any]:
     """
     return rag_graph_loader()
 
-def get_mcp_server() -> Optional[Any]:
+
+def get_mcp_server() -> Optional[MCPProtocol]:
     """
     Get or create MCPServer (v3 feature)
     
@@ -155,7 +163,8 @@ def get_mcp_server() -> Optional[Any]:
     """
     return mcp_server_loader()
 
-def get_engine() -> Optional[Any]:
+
+def get_engine() -> Optional[ReliabilityEngineProtocol]:
     """
     Get or create reliability engine
     
@@ -163,6 +172,7 @@ def get_engine() -> Optional[Any]:
         EnhancedReliabilityEngine instance or None if not available
     """
     return engine_loader()
+
 
 def get_agents() -> Optional[Any]:
     """
@@ -173,6 +183,7 @@ def get_agents() -> Optional[Any]:
     """
     return agents_loader()
 
+
 def get_faiss_index() -> Optional[Any]:
     """
     Get or create FAISS index
@@ -181,6 +192,7 @@ def get_faiss_index() -> Optional[Any]:
         ProductionFAISSIndex instance or None if not available
     """
     return faiss_index_loader()
+
 
 def get_business_metrics() -> Optional[Any]:
     """
@@ -191,7 +203,8 @@ def get_business_metrics() -> Optional[Any]:
     """
     return business_metrics_loader()
 
-def enhanced_engine() -> Optional[Any]:
+
+def enhanced_engine() -> Optional[ReliabilityEngineProtocol]:
     """
     Get enhanced reliability engine (alias for get_engine)
     
@@ -200,6 +213,7 @@ def enhanced_engine() -> Optional[Any]:
     """
     return get_engine()
 
+
 def get_v3_status() -> Dict[str, Any]:
     """Get v3 feature status"""
     from ..config import config
@@ -207,10 +221,11 @@ def get_v3_status() -> Dict[str, Any]:
     
     return {
         "engine_info": EngineFactory.get_engine_info(),
-        "rag_available": get_rag_graph() is not None,
-        "mcp_available": get_mcp_server() is not None,
+        "rag_available": rag_graph_loader.is_loaded,
+        "mcp_available": mcp_server_loader.is_loaded,
         "rag_enabled": config.rag_enabled,
         "mcp_enabled": config.mcp_enabled,
         "learning_enabled": config.learning_enabled,
         "rollout_percentage": config.rollout_percentage,
+        "beta_testing": config.beta_testing_enabled,
     }
