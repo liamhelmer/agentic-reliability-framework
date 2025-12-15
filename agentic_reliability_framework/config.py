@@ -24,10 +24,9 @@ class Config(BaseModel):
     """
     
     model_config = ConfigDict(
-        env_prefix="",
-        case_sensitive=False,
         validate_assignment=True,
         extra="ignore"
+        # Removed: env_prefix and case_sensitive are not valid in Pydantic v2 ConfigDict
     )
     
     # === API Configuration ===
@@ -152,7 +151,7 @@ class Config(BaseModel):
     @classmethod
     def from_env(cls) -> "Config":
         """Create configuration from environment variables"""
-        env_vars = {}
+        env_vars: Dict[str, Any] = {}
         
         # Map environment variables to config fields
         field_mapping = {
@@ -223,15 +222,19 @@ class Config(BaseModel):
         for env_name, field_name in field_mapping.items():
             env_value = os.getenv(env_name)
             if env_value is not None:
-                # Convert string to appropriate type
-                field_type = cls.__annotations__.get(field_name, str)
+                # Get field type from model fields
+                field_info = cls.model_fields.get(field_name)
+                if field_info is None:
+                    continue
+                    
+                field_type = field_info.annotation
                 
                 try:
-                    if field_type is bool:
-                        env_vars[field_name] = env_value.lower() in ("true", "1", "yes", "y", "t", "on")
-                    elif field_type is int:
+                    if field_type is bool or field_type == bool:
+                        env_vars[field_name] = env_value.lower() in ("true", "1", "yes", "y", "t", "on", "enabled")
+                    elif field_type is int or field_type == int:
                         env_vars[field_name] = int(env_value)
-                    elif field_type is float:
+                    elif field_type is float or field_type == float:
                         env_vars[field_name] = float(env_value)
                     else:
                         env_vars[field_name] = env_value
