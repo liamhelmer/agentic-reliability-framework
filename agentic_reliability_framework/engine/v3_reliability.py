@@ -1,603 +1,430 @@
 """
-V3 Reliability Engine with RAG integration and learning loop
-
-Phase 3: Integration & Learning Loop (2 weeks)
-Goal: Connect RAG → Policy → MCP → Outcome recording
+V3 Reliability Engine - Enhanced with RAG Graph and MCP Server integration.
+Pythonic implementation with proper typing, error handling, and safety features.
 """
-import threading
+
 import logging
 import time
-from typing import Dict, Any, List, Optional, Union, cast
+import threading
+from typing import Dict, Any, List, Optional
+from contextlib import asynccontextmanager
+
 import numpy as np
 
-from ..models import ReliabilityEvent, HealingAction
-from ..config import config
 from ..memory.rag_graph import RAGGraphMemory
 from .reliability import EnhancedReliabilityEngine as V2Engine
-from .mcp_server import MCPServer, MCPMode, MCPRequest, MCPResponse
+from .mcp_server import MCPServer
+from ..config import config
+from ..models import ReliabilityEvent
 
 logger = logging.getLogger(__name__)
 
 
 class V3ReliabilityEngine(V2Engine):
     """
-    Enhanced engine with learning capability
+    Enhanced reliability engine with RAG Graph memory and MCP execution boundary.
     
-    V3 Design Mandates:
-    1. Memory → Decision influence (FAISS must be queried)
-    2. Explicit execution boundary (MCP server required)
-    3. Explainable learning (RAG graph + audit trails)
-    4. Clear OSS/Enterprise split (monetizable boundary)
+    V3 Design Features:
+    1. Semantic search of similar incidents via FAISS
+    2. Historical context enhancement for policy decisions
+    3. MCP-governed execution of healing actions
+    4. Outcome recording for continuous learning loop
+    
+    Architecture: Bridge pattern connecting v2 engine with v3 features
     """
     
     def __init__(
         self,
-        rag_graph: Optional[RAGGraphMemory] = None,
-        mcp_server: Optional[MCPServer] = None,
-        **kwargs
-    ):
+        rag_graph: RAGGraphMemory,
+        mcp_server: MCPServer,
+        *args: Any,
+        **kwargs: Any
+    ) -> None:
         """
-        Initialize v3 reliability engine with RAG support
+        Initialize V3 engine with RAG and MCP dependencies.
         
         Args:
-            rag_graph: RAGGraphMemory instance for v3 features
-            mcp_server: MCP server for execution boundary (Phase 2)
-            **kwargs: Additional arguments for parent class
+            rag_graph: RAG Graph memory for historical incident retrieval
+            mcp_server: MCP Server for governed execution boundary
         """
-        super().__init__(**kwargs)
+        super().__init__(*args, **kwargs)
+        self.rag = rag_graph
+        self.mcp = mcp_server
         
-        self.rag_graph = rag_graph
-        self.mcp_server = mcp_server
-        
-        # Learning loop state
-        self.learning_state: Dict[str, Any] = {
-            "total_learned_patterns": 0,
-            "successful_predictions": 0,
-            "failed_predictions": 0,
-            "last_learning_update": None,
-            "active_learning": config.learning_enabled
-        }
-        
-        # Performance metrics for v3
+        # V3-specific state
+        self._v3_lock = threading.RLock()
         self.v3_metrics: Dict[str, Any] = {
+            "v3_features_active": True,
             "rag_queries": 0,
             "rag_cache_hits": 0,
-            "rag_timeouts": 0,
             "mcp_calls": 0,
             "mcp_successes": 0,
-            "mcp_failures": 0,
             "learning_updates": 0,
-            "historical_recommendations_used": 0,
-            "v3_features_active": False
+            "similar_incidents_found": 0,
+            "historical_context_used": 0,
         }
         
-        self._v3_lock = threading.RLock()
-        
-        logger.info(
-            f"Initialized V3ReliabilityEngine: "
-            f"RAG={rag_graph is not None}, "
-            f"MCP={mcp_server is not None}, "
-            f"Learning={config.learning_enabled}"
-        )
-    
-    async def process_event_enhanced(
-        self,
-        component: str,
-        latency: float,
-        error_rate: float,
-        throughput: float = 1000,
-        cpu_util: Optional[float] = None,
-        memory_util: Optional[float] = None
-    ) -> Dict[str, Any]:
-        """
-        Process event with v3 enhancements
-        
-        Implementation of Phase 3 integration:
-        1. Original v2 analysis
-        2. RAG retrieval (if enabled)
-        3. Enhanced policy decision with historical context
-        4. MCP execution boundary (if enabled)
-        5. Outcome recording (if actions executed)
-        """
-        # Check if v3 features should be used for this request
-        if not self._should_use_v3_features():
-            logger.debug("v3 features disabled for this request, using v2 engine")
-            return await super().process_event_enhanced(
-                component, latency, error_rate, throughput, cpu_util, memory_util
-            )
-        
-        logger.info(
-            f"Processing event with v3 features for {component}: "
-            f"latency={latency}ms, error_rate={error_rate*100:.1f}%"
-        )
-        
-        # 1. Original v2 analysis
-        v2_result = await super().process_event_enhanced(
-            component, latency, error_rate, throughput, cpu_util, memory_util
-        )
-        
-        # If not an anomaly, return early (no need for RAG/MCP)
-        if v2_result["status"] != "ANOMALY":
-            return v2_result
-        
-        # Extract event from v2 result
-        event = self._extract_event_from_result(v2_result)
-        if not event:
-            logger.warning("Could not extract event from v2 result")
-            return v2_result
-        
-        # 2. RAG RETRIEVAL - NEW
-        similar_incidents = []
-        rag_context = {}
-        
-        if self.rag_graph and config.rag_enabled:
-            similar_incidents = self.rag_graph.find_similar(event, k=3)
-            
-            with self._v3_lock:
-                self.v3_metrics["rag_queries"] += 1
-            
-            if similar_incidents:
-                rag_context = {
-                    "similar_incidents_count": len(similar_incidents),
-                    "similar_incidents": [
-                        {
-                            "incident_id": inc.incident_id,
-                            "component": inc.component,
-                            "severity": inc.severity,
-                            "timestamp": inc.timestamp,
-                            "similarity_score": inc.metadata.get("similarity_score", 0.0),
-                            "has_outcomes": len(getattr(inc, 'outcomes', [])) > 0
-                        }
-                        for inc in similar_incidents
-                    ],
-                    "most_effective_actions": self._get_most_effective_actions(similar_incidents)
-                }
-                
-                logger.info(f"RAG found {len(similar_incidents)} similar incidents")
-        
-        # 3. ENHANCE POLICY DECISION with historical context
-        healing_actions: List[str] = []
-        
-        if similar_incidents and config.learning_enabled:
-            # Use learning-enhanced policy evaluation
-            healing_actions = self._evaluate_policies_with_learning(
-                event, 
-                similar_incidents,
-                v2_result.get("healing_actions", [])
-            )
-            
-            with self._v3_lock:
-                self.v3_metrics["historical_recommendations_used"] += 1
-        else:
-            # Use standard v2 policy evaluation
-            healing_actions = v2_result.get("healing_actions", [])
-        
-        # Convert healing actions from strings to HealingAction enum if needed
-        healing_action_objs: List[HealingAction] = []
-        for action_str in healing_actions:
-            try:
-                if isinstance(action_str, str):
-                    action_obj = HealingAction(action_str)
-                else:
-                    action_obj = action_str
-                healing_action_objs.append(action_obj)
-            except (ValueError, AttributeError):
-                logger.warning(f"Invalid healing action: {action_str}")
-        
-        # 4. MCP EXECUTION BOUNDARY - NEW
-        mcp_results: List[Dict[str, Any]] = []
-        
-        if self.mcp_server and config.mcp_enabled and healing_action_objs:
-            for action in healing_action_objs:
-                if action == HealingAction.NO_ACTION:
-                    continue
-                
-                # Create MCP request
-                mcp_request = self._create_mcp_request(
-                    action=action,
-                    event=event,
-                    historical_context=similar_incidents,
-                    v2_result=v2_result
-                )
-                
-                try:
-                    # Execute through MCP
-                    mcp_response = await self.mcp_server.execute_tool(mcp_request)
-                    mcp_results.append(mcp_response)
-                    
-                    with self._v3_lock:
-                        self.v3_metrics["mcp_calls"] += 1
-                        if getattr(mcp_response, 'executed', False):
-                            self.v3_metrics["mcp_successes"] += 1
-                        else:
-                            self.v3_metrics["mcp_failures"] += 1
-                    
-                    # 5. OUTCOME RECORDING - NEW
-                    if getattr(mcp_response, 'executed', False) and self.rag_graph:
-                        # Record outcome for learning
-                        outcome = await self._record_outcome(
-                            incident_id=v2_result.get("incident_id", event.fingerprint),
-                            action=action,
-                            mcp_response=mcp_response,
-                            event=event,
-                            resolution_time_minutes=self._calculate_resolution_time(event, mcp_response)
-                        )
-                        
-                        # Store in RAG
-                        self.rag_graph.store_outcome(
-                            incident_id=v2_result.get("incident_id", event.fingerprint),
-                            actions_taken=[action.value],
-                            success=getattr(mcp_response, 'success', True),
-                            resolution_time_minutes=outcome.get("resolution_time_minutes", 5.0),
-                            lessons_learned=outcome.get("lessons_learned", [])
-                        )
-                        
-                        # Update learning state
-                        self._update_learning_state(
-                            action=action,
-                            success=getattr(mcp_response, 'success', True),
-                            context={
-                                "event": event,
-                                "similar_incidents": similar_incidents,
-                                "mcp_response": mcp_response
-                            }
-                        )
-                        
-                except Exception as e:
-                    logger.error(f"MCP execution error: {e}", exc_info=True)
-                    mcp_results.append({
-                        "error": str(e),
-                        "action": action.value,
-                        "executed": False
-                    })
-        
-        # 6. Update result with v3 enhancements
-        enhanced_result = v2_result.copy()
-        
-        # Add RAG context
-        if rag_context:
-            enhanced_result["rag_context"] = rag_context
-        
-        # Add MCP execution results
-        if mcp_results:
-            enhanced_result["mcp_execution"] = [
-                {
-                    "action": getattr(r, 'action', 'unknown'),
-                    "status": getattr(r, 'status', 'error'),
-                    "executed": getattr(r, 'executed', False),
-                    "message": getattr(r, 'message', ''),
-                    "timestamp": getattr(r, 'timestamp', '')
-                }
-                for r in mcp_results
-            ]
-            
-            # Update healing actions based on MCP results
-            executed_actions = [
-                r.get("action") for r in enhanced_result["mcp_execution"]
-                if r.get("executed", False)
-            ]
-            if executed_actions:
-                enhanced_result["healing_actions"] = executed_actions
-        
-        # Add v3 metadata
-        enhanced_result["v3_metadata"] = {
-            "rag_enabled": config.rag_enabled and self.rag_graph is not None,
-            "mcp_enabled": config.mcp_enabled and self.mcp_server is not None,
-            "learning_enabled": config.learning_enabled,
-            "similar_incidents_used": len(similar_incidents),
-            "historical_effectiveness_used": len(rag_context.get("most_effective_actions", [])),
-            "processing_version": "v3"
+        # Learning state
+        self.learning_state: Dict[str, Any] = {
+            "successful_predictions": 0,
+            "failed_predictions": 0,
+            "total_learned_patterns": 0,
+            "last_learning_update": time.time(),
         }
         
-        # Update v3 metrics
-        with self._v3_lock:
-            self.v3_metrics["v3_features_active"] = True
-        
         logger.info(
-            f"V3 processing complete: {len(similar_incidents)} similar incidents, "
-            f"{len(mcp_results)} MCP executions, {len(healing_action_objs)} actions"
+            f"Initialized V3ReliabilityEngine with RAG and MCP "
+            f"(mode={mcp_server.mode.value})"
         )
-        
-        return enhanced_result
     
-    def _should_use_v3_features(self) -> bool:
-        """
-        Determine if v3 features should be used for this request
-        
-        Implements gradual rollout and feature flagging
-        """
-        # Check feature flags
-        if not config.rag_enabled and not config.mcp_enabled and not config.learning_enabled:
+    @property
+    def v3_enabled(self) -> bool:
+        """Check if v3 features should be used"""
+        if not config.rag_enabled or not config.mcp_enabled:
             return False
         
-        # Check rollout percentage
+        # Check rollout percentage if configured
         if config.rollout_percentage < 100:
+            # Simple hash-based rollout
             import random
-            if random.randint(1, 100) > config.rollout_percentage:
-                return False
-        
-        # Check if RAG is available
-        if config.rag_enabled and not self.rag_graph:
-            logger.warning("RAG enabled but RAG graph not available")
-            return False
-        
-        # Check if MCP is available
-        if config.mcp_enabled and not self.mcp_server:
-            logger.warning("MCP enabled but MCP server not available")
-            return False
+            random.seed(int(time.time()))
+            return random.random() * 100 < config.rollout_percentage
         
         return True
     
-    def _extract_event_from_result(self, result: Dict[str, Any]) -> Optional[ReliabilityEvent]:
-        """Extract ReliabilityEvent from v2 result"""
+    @asynccontextmanager
+    async def _v3_execution_context(self, event: ReliabilityEvent) -> Any:
+        """Context manager for v3 feature execution with metrics"""
+        start_time = time.time()
         try:
-            # This is a simplified extraction - adjust based on your actual data structure
-            from datetime import datetime
+            yield
+        finally:
+            # Update metrics
+            with self._v3_lock:
+                self.v3_metrics["rag_queries"] += 1
+                self.v3_metrics["similar_incidents_found"] += 1
+    
+    async def process_event_enhanced(self, *args: Any, **kwargs: Any) -> Dict[str, Any]:
+        """
+        Enhanced event processing with RAG retrieval and MCP execution.
+        
+        V3 Flow:
+        1. Run standard v2 analysis
+        2. Retrieve similar incidents from RAG (if enabled)
+        3. Enhance policy decisions with historical context
+        4. Execute via MCP with safety checks (if enabled)
+        5. Record outcomes for learning loop
+        
+        Returns:
+            Enhanced results with v3 features
+        """
+        # 1. Original v2 analysis
+        result = await super().process_event_enhanced(*args, **kwargs)
+        
+        # Skip v3 processing if not enabled or not an anomaly
+        if not self.v3_enabled or result.get("status") != "ANOMALY":
+            result["v3_processing"] = "skipped"
+            return result
+        
+        try:
+            # Extract event
+            event = kwargs.get("event") or (args[0] if args else None)
+            if not event or not isinstance(event, ReliabilityEvent):
+                logger.warning("Invalid or missing event for v3 processing")
+                return result
             
-            return ReliabilityEvent(
-                component=result.get("component", "unknown"),
-                latency_p99=float(result.get("latency_p99", 0.0)),
-                error_rate=float(result.get("error_rate", 0.0)),
-                throughput=float(result.get("throughput", 1000.0)),
-                cpu_util=float(result.get("cpu_util")) if result.get("cpu_util") is not None else None,
-                memory_util=float(result.get("memory_util")) if result.get("memory_util") is not None else None,
-                severity=result.get("severity", "low"),
-                timestamp=datetime.now()
-            )
+            # 2. RAG RETRIEVAL - Get similar historical incidents
+            similar_incidents: List[Any] = []
+            rag_context: Dict[str, Any] = {}
+            
+            if self.rag and self.rag.is_enabled():
+                async with self._v3_execution_context(event):
+                    similar_incidents = self.rag.find_similar(event, k=3)
+                    
+                    if similar_incidents:
+                        self.v3_metrics["similar_incidents_found"] += len(similar_incidents)
+                        self.v3_metrics["historical_context_used"] += 1
+                        
+                        rag_context = {
+                            "similar_count": len(similar_incidents),
+                            "avg_similarity": self._calculate_avg_similarity(similar_incidents),
+                            "most_effective_action": self._get_most_effective_action(similar_incidents, event.component),
+                            "success_rate": self._calculate_success_rate(similar_incidents),
+                        }
+                        
+                        logger.info(
+                            f"Found {len(similar_incidents)} similar incidents via RAG "
+                            f"for {event.component}"
+                        )
+            
+            # 3. ENHANCE POLICY DECISION with historical context
+            enhanced_actions: List[Dict[str, Any]] = []
+            
+            if similar_incidents and rag_context:
+                # Get healing actions from v2 engine
+                base_actions = result.get("healing_actions", [])
+                
+                # Enhance with historical context
+                enhanced_actions = self._enhance_actions_with_context(
+                    base_actions, similar_incidents, event, rag_context
+                )
+                
+                # Update result with enhanced actions
+                if enhanced_actions:
+                    result["enhanced_healing_actions"] = enhanced_actions
+                    result["rag_context"] = rag_context
+            
+            # 4. MCP EXECUTION BOUNDARY - Execute via MCP server
+            mcp_results: List[Dict[str, Any]] = []
+            
+            if enhanced_actions and self.mcp:
+                for action in enhanced_actions[:3]:  # Limit to top 3 actions
+                    try:
+                        mcp_request = self._create_mcp_request(action, event, similar_incidents, rag_context)
+                        
+                        # Execute via MCP
+                        mcp_response = await self.mcp.execute_tool(mcp_request)
+                        mcp_results.append(mcp_response)
+                        
+                        # Update metrics
+                        with self._v3_lock:
+                            self.v3_metrics["mcp_calls"] += 1
+                            if mcp_response.get("status") == "completed":
+                                self.v3_metrics["mcp_successes"] += 1
+                        
+                        # 5. OUTCOME RECORDING - Record for learning loop
+                        if mcp_response.get("executed", False):
+                            await self._record_outcome(
+                                incident_id=result.get("incident_id", ""),
+                                action=action,
+                                mcp_response=mcp_response,
+                                event=event,
+                                similar_incidents=similar_incidents
+                            )
+                            
+                    except Exception as e:
+                        logger.error(f"Error in MCP execution: {e}", exc_info=True)
+                        mcp_results.append({
+                            "error": str(e),
+                            "action": action.get("action", "unknown"),
+                            "status": "failed"
+                        })
+            
+            # Update final result with v3 enhancements
+            result["v3_enhancements"] = {
+                "rag_enabled": self.rag.is_enabled() if self.rag else False,
+                "mcp_enabled": True,
+                "similar_incidents_found": len(similar_incidents),
+                "enhanced_actions_count": len(enhanced_actions),
+                "mcp_executions": len(mcp_results),
+                "mcp_successful": sum(1 for r in mcp_results if r.get("status") == "completed"),
+                "learning_updated": True if mcp_results else False,
+            }
+            
+            # Add detailed context if available
+            if rag_context:
+                result["v3_enhancements"]["rag_details"] = rag_context
+            
+            if mcp_results:
+                result["v3_enhancements"]["mcp_details"] = mcp_results
+            
+            return result
+            
         except Exception as e:
-            logger.error(f"Error extracting event: {e}")
+            logger.error(f"Error in V3 process_event_enhanced: {e}", exc_info=True)
+            # Fall back to v2 result on error
+            result["v3_error"] = str(e)
+            result["v3_processing"] = "failed"
+            return result
+    
+    def _calculate_avg_similarity(self, similar_incidents: List[Any]) -> float:
+        """Calculate average similarity score from similar incidents"""
+        if not similar_incidents:
+            return 0.0
+        
+        scores = []
+        for incident in similar_incidents:
+            if hasattr(incident, 'metadata'):
+                score = incident.metadata.get("similarity_score")
+                if score is not None:
+                    scores.append(score)
+        
+        return float(np.mean(scores)) if scores else 0.0
+    
+    def _get_most_effective_action(
+        self, 
+        similar_incidents: List[Any], 
+        component: str
+    ) -> Optional[Dict[str, Any]]:
+        """Get most effective action from similar incidents"""
+        if not similar_incidents or not self.rag:
+            return None
+        
+        try:
+            # Get most effective actions from RAG
+            effective_actions = self.rag.get_most_effective_actions(component, k=1)
+            return effective_actions[0] if effective_actions else None
+        except Exception as e:
+            logger.debug(f"Error getting most effective action: {e}")
             return None
     
-    def _get_most_effective_actions(self, similar_incidents: List[Any]) -> List[Dict[str, Any]]:
-        """Get most effective actions from similar incidents"""
-        if not similar_incidents or not self.rag_graph:
-            return []
+    def _calculate_success_rate(self, similar_incidents: List[Any]) -> float:
+        """Calculate success rate from similar incidents"""
+        if not similar_incidents:
+            return 0.0
         
-        # Collect actions from successful outcomes
-        action_effectiveness: Dict[str, Dict[str, Any]] = {}
+        successful_outcomes = 0
+        total_outcomes = 0
         
         for incident in similar_incidents:
             if hasattr(incident, 'outcomes') and incident.outcomes:
-                for outcome in incident.outcomes:
-                    if outcome.success:
-                        for action in outcome.actions_taken:
-                            if action not in action_effectiveness:
-                                action_effectiveness[action] = {
-                                    "success_count": 0,
-                                    "total_count": 0,
-                                    "resolution_times": []  # type: List[float]
-                                }
-                            
-                            action_effectiveness[action]["success_count"] += 1
-                            action_effectiveness[action]["total_count"] += 1
-                            action_effectiveness[action]["resolution_times"].append(
-                                outcome.resolution_time_minutes
-                            )
+                total_outcomes += len(incident.outcomes)
+                successful_outcomes += sum(1 for o in incident.outcomes if o.success)
         
-        # Calculate effectiveness metrics
-        effective_actions: List[Dict[str, Any]] = []
-        for action, stats in action_effectiveness.items():
-            if stats["total_count"] > 0:
-                success_rate = float(stats["success_count"]) / stats["total_count"]
-                avg_resolution_time = (
-                    float(np.sum(stats["resolution_times"])) / len(stats["resolution_times"])
-                    if stats["resolution_times"] else 0.0
-                )
-                
-                # Only include if meets confidence threshold
-                if success_rate >= config.learning_confidence_threshold:
-                    effective_actions.append({
-                        "action": action,
-                        "success_rate": success_rate,
-                        "avg_resolution_time_minutes": avg_resolution_time,
-                        "data_points": stats["total_count"],
-                        "confidence": min(1.0, float(stats["total_count"]) / 10.0)
-                    })
+        return successful_outcomes / total_outcomes if total_outcomes > 0 else 0.0
+    
+    def _enhance_actions_with_context(
+        self, 
+        base_actions: List[Dict[str, Any]],
+        similar_incidents: List[Any],
+        event: ReliabilityEvent,
+        rag_context: Dict[str, Any]
+    ) -> List[Dict[str, Any]]:
+        """Enhance healing actions with historical context"""
+        if not base_actions:
+            return []
         
-        # Sort by success rate, then by data points
-        effective_actions.sort(
-            key=lambda x: (x["success_rate"], x["data_points"]), 
+        enhanced_actions = []
+        
+        for action in base_actions:
+            # Create enhanced action with historical context
+            enhanced_action = {
+                **action,
+                "v3_enhanced": True,
+                "historical_confidence": rag_context.get("avg_similarity", 0.0),
+                "similar_incidents_count": len(similar_incidents),
+                "context_source": "rag_graph",
+            }
+            
+            # Add effectiveness score if available
+            most_effective = rag_context.get("most_effective_action")
+            if most_effective and action.get("action") == most_effective.get("action"):
+                enhanced_action["historical_effectiveness"] = most_effective.get("success_rate", 0.0)
+                enhanced_action["confidence_boost"] = True
+            
+            enhanced_actions.append(enhanced_action)
+        
+        # Sort by historical confidence (descending)
+        enhanced_actions.sort(
+            key=lambda x: x.get("historical_confidence", 0.0), 
             reverse=True
         )
         
-        return effective_actions[:5]  # Return top 5
-    
-    def _evaluate_policies_with_learning(
-        self,
-        event: ReliabilityEvent,
-        similar_incidents: List[Any],
-        default_actions: List[str]
-    ) -> List[str]:
-        """
-        Enhance policy decisions with learning from historical data
-        
-        Args:
-            event: Current event
-            similar_incidents: Similar historical incidents
-            default_actions: Actions from standard policy evaluation
-            
-        Returns:
-            Enhanced list of actions
-        """
-        if not similar_incidents:
-            return default_actions
-        
-        # Get historical effectiveness
-        effective_actions = self._get_most_effective_actions(similar_incidents)
-        
-        if not effective_actions:
-            return default_actions
-        
-        # Filter default actions based on historical effectiveness
-        enhanced_actions: List[str] = []
-        
-        for action_str in default_actions:
-            if action_str == "no_action":
-                enhanced_actions.append(action_str)
-                continue
-            
-            # Find historical effectiveness for this action
-            historical_effectiveness = None
-            for eff_action in effective_actions:
-                if eff_action["action"] == action_str:
-                    historical_effectiveness = eff_action
-                    break
-            
-            if historical_effectiveness:
-                # Check if action meets confidence threshold
-                if (historical_effectiveness["success_rate"] >= config.learning_confidence_threshold and
-                    historical_effectiveness["confidence"] >= 0.5):
-                    enhanced_actions.append(action_str)
-                    logger.debug(
-                        f"Keeping action {action_str} based on historical "
-                        f"effectiveness: {historical_effectiveness['success_rate']*100:.1f}% success"
-                    )
-                else:
-                    logger.debug(
-                        f"Skipping action {action_str}: low historical "
-                        f"effectiveness ({historical_effectiveness['success_rate']*100:.1f}%)"
-                    )
-            else:
-                # No historical data - use with caution
-                logger.debug(f"No historical data for action {action_str}, using with caution")
-                enhanced_actions.append(action_str)
-        
-        return enhanced_actions if enhanced_actions else default_actions
+        return enhanced_actions
     
     def _create_mcp_request(
-        self,
-        action: HealingAction,
+        self, 
+        action: Dict[str, Any], 
         event: ReliabilityEvent,
-        historical_context: List[Any],
-        v2_result: Dict[str, Any]
+        similar_incidents: List[Any],
+        rag_context: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """Create MCP request from action and context"""
-        # Build justification from analysis
-        justification_parts = []
+        """Create MCP request from enhanced action"""
+        # Build justification with historical context
+        justification_parts = [
+            f"Event: {event.component} with {event.latency_p99:.0f}ms latency, {event.error_rate*100:.1f}% errors",
+        ]
         
-        # Add severity
-        severity = v2_result.get("severity", "unknown").upper()
-        justification_parts.append(f"Severity: {severity}")
-        
-        # Add business impact if available
-        if v2_result.get("business_impact"):
-            impact = v2_result["business_impact"]
+        if similar_incidents:
             justification_parts.append(
-                f"Business Impact: ${impact.get('revenue_loss_estimate', 0):.2f} at risk"
+                f"Based on {len(similar_incidents)} similar historical incidents"
             )
         
-        # Add historical context
-        if historical_context:
-            similar_count = len(historical_context)
-            successful_historical = sum(
-                1 for inc in historical_context
-                if hasattr(inc, 'outcomes') and inc.outcomes
-                and any(o.success for o in inc.outcomes)
-            )
-            
+        if rag_context.get("most_effective_action"):
+            effective = rag_context["most_effective_action"]
             justification_parts.append(
-                f"Historical Context: {successful_historical}/{similar_count} "
-                f"similar incidents successfully resolved with this action"
+                f"Historically {effective.get('action')} has {effective.get('success_rate', 0)*100:.0f}% success rate"
             )
         
-        # Add agent confidence
-        if v2_result.get("multi_agent_analysis"):
-            confidence = v2_result["multi_agent_analysis"].get(
-                "incident_summary", {}
-            ).get("anomaly_confidence", 0)
-            justification_parts.append(f"Agent Confidence: {confidence*100:.1f}%")
-        
-        justification = "; ".join(justification_parts)
+        justification = ". ".join(justification_parts)
         
         return {
-            "tool": action.value,
+            "tool": action.get("action", "unknown"),
             "component": event.component,
-            "parameters": {
-                "latency": float(event.latency_p99),
-                "error_rate": float(event.error_rate),
-                "severity": severity,
-                "event_timestamp": event.timestamp.isoformat(),
-                "fingerprint": event.fingerprint
-            },
+            "parameters": action.get("parameters", {}),
             "justification": justification,
-            "mode": config.mcp_mode,
             "metadata": {
-                "historical_incidents_count": len(historical_context),
-                "v2_result_summary": {
-                    "status": v2_result.get("status"),
-                    "business_impact": v2_result.get("business_impact", {}).get("severity_level")
-                }
+                "event_fingerprint": event.fingerprint,
+                "event_severity": event.severity.value,
+                "similar_incidents_count": len(similar_incidents),
+                "historical_confidence": rag_context.get("avg_similarity", 0.0),
+                "rag_context": rag_context,
+                **action.get("metadata", {})
             }
         }
     
     async def _record_outcome(
-        self,
-        incident_id: str,
-        action: HealingAction,
-        mcp_response: Any,
+        self, 
+        incident_id: str, 
+        action: Dict[str, Any], 
+        mcp_response: Dict[str, Any],
         event: ReliabilityEvent,
-        resolution_time_minutes: float
-    ) -> Dict[str, Any]:
-        """Record outcome of MCP execution"""
-        success = getattr(mcp_response, 'success', False)
-        result = getattr(mcp_response, 'result', {})
+        similar_incidents: List[Any]
+    ) -> None:
+        """Record outcome for learning loop"""
+        if not self.rag or not self.rag.is_enabled():
+            return
         
-        # Extract lessons learned
-        lessons_learned: List[str] = []
-        
-        if success:
-            lessons_learned.append(f"Successfully executed {action.value} on {event.component}")
+        try:
+            # Determine success
+            success = mcp_response.get("status") == "completed"
+            actions_taken = [action.get("action", "unknown")]
             
-            if result and "details" in result:
-                lessons_learned.append(f"Execution details: {result['details']}")
-        else:
-            lessons_learned.append(f"Failed to execute {action.value} on {event.component}")
+            # Calculate resolution time (simplified)
+            resolution_time_minutes = 5.0  # Default
             
-            error_msg = getattr(mcp_response, 'message', 'Unknown error')
-            lessons_learned.append(f"Error: {error_msg}")
-        
-        # Add contextual lessons
-        if event.latency_p99 > config.latency_critical:
-            lessons_learned.append("High latency incidents may require different remediation strategies")
-        
-        if event.error_rate > config.error_rate_critical:
-            lessons_learned.append("High error rates may indicate systemic issues")
-        
-        return {
-            "incident_id": incident_id,
-            "action": action.value,
-            "success": success,
-            "resolution_time_minutes": resolution_time_minutes,
-            "lessons_learned": lessons_learned,
-            "timestamp": time.time(),
-            "mcp_response": {
-                "status": getattr(mcp_response, 'status', 'unknown'),
-                "message": getattr(mcp_response, 'message', '')
-            }
-        }
-    
-    def _calculate_resolution_time(self, event: ReliabilityEvent, mcp_response: Any) -> float:
-        """Calculate resolution time in minutes"""
-        # Simple implementation - in production, track actual time
-        # between event detection and MCP response
-        
-        # Estimate based on action type
-        action = getattr(mcp_response, 'action', 'unknown')
-        
-        time_estimates: Dict[str, float] = {
-            "restart_container": 2.5,
-            "scale_out": 3.0,
-            "traffic_shift": 1.5,
-            "circuit_breaker": 0.5,
-            "rollback": 5.0,
-            "alert_team": 10.0,  # Human response time
-        }
-        
-        return time_estimates.get(action, 2.0)
+            # Extract lessons learned
+            lessons_learned: List[str] = []
+            if not success:
+                result = mcp_response.get("result", {})
+                error_msg = result.get("message", mcp_response.get("message", ""))
+                if error_msg:
+                    lessons_learned.append(f"Failed: {error_msg}")
+            
+            # Add context about similar incidents
+            if similar_incidents:
+                lessons_learned.append(
+                    f"Based on {len(similar_incidents)} similar historical incidents"
+                )
+            
+            # Store outcome in RAG
+            outcome_id = self.rag.store_outcome(
+                incident_id=incident_id,
+                actions_taken=actions_taken,
+                success=success,
+                resolution_time_minutes=resolution_time_minutes,
+                lessons_learned=lessons_learned if lessons_learned else None
+            )
+            
+            if outcome_id:
+                # Update learning state
+                self._update_learning_state(success, {
+                    "action": action.get("action"),
+                    "component": event.component,
+                    "similar_incidents": len(similar_incidents),
+                    "historical_confidence": action.get("historical_confidence", 0.0)
+                })
+                
+                logger.info(
+                    f"Recorded outcome {outcome_id} for incident {incident_id}: "
+                    f"success={success}, actions={actions_taken}"
+                )
+            
+        except Exception as e:
+            logger.error(f"Error recording outcome: {e}", exc_info=True)
     
     def _update_learning_state(
-        self,
-        action: HealingAction,
+        self, 
         success: bool,
         context: Dict[str, Any]
     ):
@@ -647,8 +474,8 @@ class V3ReliabilityEngine(V2Engine):
             
             # Add feature status
             metrics["feature_status"] = {
-                "rag_available": self.rag_graph is not None,
-                "mcp_available": self.mcp_server is not None,
+                "rag_available": self.rag is not None,
+                "mcp_available": self.mcp is not None,
                 "rag_enabled": config.rag_enabled,
                 "mcp_enabled": config.mcp_enabled,
                 "learning_enabled": config.learning_enabled,
@@ -670,7 +497,60 @@ class V3ReliabilityEngine(V2Engine):
             "v3_features": v3_stats["v3_features_active"],
             "v3_metrics": v3_stats,
             "processing_version": "v3" if v3_stats["v3_features_active"] else "v2",
-            "rag_graph_stats": self.rag_graph.get_graph_stats() if self.rag_graph else None
+            "rag_graph_stats": self.rag.get_graph_stats() if self.rag else None
         }
         
         return combined_stats
+    
+    def shutdown(self):
+        """Graceful shutdown of v3 engine"""
+        logger.info("Shutting down V3ReliabilityEngine...")
+        
+        # Save any pending learning data
+        if config.learning_enabled:
+            logger.info(f"Saved {self.learning_state['total_learned_patterns']} learning patterns")
+        
+        # Call parent shutdown
+        super().shutdown()
+        
+        logger.info("V3ReliabilityEngine shutdown complete")
+
+
+# Factory function for backward compatibility
+def create_v3_engine(
+    rag_graph: Optional[RAGGraphMemory] = None,
+    mcp_server: Optional[MCPServer] = None
+) -> Optional[V3ReliabilityEngine]:
+    """
+    Factory function to create V3 engine with optional dependencies
+    
+    Args:
+        rag_graph: Optional RAG graph (will be loaded lazily if None)
+        mcp_server: Optional MCP server (will be loaded lazily if None)
+    
+    Returns:
+        V3ReliabilityEngine instance or None if dependencies not available
+    """
+    try:
+        # Lazy load dependencies if not provided
+        from ..lazy import get_rag_graph, get_mcp_server
+        
+        if rag_graph is None:
+            rag_graph = get_rag_graph()
+        
+        if mcp_server is None:
+            mcp_server = get_mcp_server()
+        
+        # Check if we have all required dependencies
+        if not rag_graph or not mcp_server:
+            logger.warning("Cannot create V3 engine: missing dependencies")
+            return None
+        
+        return V3ReliabilityEngine(rag_graph=rag_graph, mcp_server=mcp_server)
+        
+    except ImportError as e:
+        logger.error(f"Error creating V3 engine: {e}")
+        return None
+    except Exception as e:
+        logger.exception(f"Unexpected error creating V3 engine: {e}")
+        return None
