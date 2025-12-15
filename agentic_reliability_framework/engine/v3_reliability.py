@@ -6,7 +6,7 @@ Pythonic implementation with proper typing, error handling, and safety features.
 import logging
 import time
 import threading
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, cast
 from contextlib import asynccontextmanager
 
 import numpy as np
@@ -16,6 +16,7 @@ from .reliability import EnhancedReliabilityEngine as V2Engine
 from .mcp_server import MCPServer
 from ..config import config
 from ..models import ReliabilityEvent
+from .interfaces import RAGProtocol, MCPProtocol  # Added for protocol types
 
 logger = logging.getLogger(__name__)
 
@@ -184,20 +185,21 @@ class V3ReliabilityEngine(V2Engine):
                         
                         # Execute via MCP
                         mcp_response = await self.mcp.execute_tool(mcp_request)
-                        mcp_results.append(mcp_response)
+                        mcp_response_dict = mcp_response.to_dict()  # FIXED: Convert to dict
+                        mcp_results.append(mcp_response_dict)
                         
                         # Update metrics
                         with self._v3_lock:
                             self.v3_metrics["mcp_calls"] += 1
-                            if mcp_response.get("status") == "completed":
+                            if mcp_response_dict.get("status") == "completed":
                                 self.v3_metrics["mcp_successes"] += 1
                         
                         # 5. OUTCOME RECORDING - Record for learning loop
-                        if mcp_response.get("executed", False):
+                        if mcp_response_dict.get("executed", False):
                             await self._record_outcome(
                                 incident_id=result.get("incident_id", ""),
                                 action=action,
-                                mcp_response=mcp_response,
+                                mcp_response=mcp_response_dict,  # FIXED: Pass dict, not object
                                 event=event,
                                 similar_incidents=similar_incidents
                             )
@@ -367,7 +369,7 @@ class V3ReliabilityEngine(V2Engine):
         self, 
         incident_id: str, 
         action: Dict[str, Any], 
-        mcp_response: Dict[str, Any],
+        mcp_response: Dict[str, Any],  # FIXED: Changed from MCPResponse to dict
         event: ReliabilityEvent,
         similar_incidents: List[Any]
     ) -> None:
@@ -518,8 +520,8 @@ class V3ReliabilityEngine(V2Engine):
 
 # Factory function for backward compatibility
 def create_v3_engine(
-    rag_graph: Optional[RAGGraphMemory] = None,
-    mcp_server: Optional[MCPServer] = None
+    rag_graph: Optional[RAGProtocol] = None,  # FIXED: Changed to protocol type
+    mcp_server: Optional[MCPProtocol] = None   # FIXED: Changed to protocol type
 ) -> Optional[V3ReliabilityEngine]:
     """
     Factory function to create V3 engine with optional dependencies
@@ -546,7 +548,11 @@ def create_v3_engine(
             logger.warning("Cannot create V3 engine: missing dependencies")
             return None
         
-        return V3ReliabilityEngine(rag_graph=rag_graph, mcp_server=mcp_server)
+        # FIXED: Cast protocols to concrete types for V3ReliabilityEngine
+        rag_concrete = cast(RAGGraphMemory, rag_graph)
+        mcp_concrete = cast(MCPServer, mcp_server)
+        
+        return V3ReliabilityEngine(rag_graph=rag_concrete, mcp_server=mcp_concrete)
         
     except ImportError as e:
         logger.error(f"Error creating V3 engine: {e}")
