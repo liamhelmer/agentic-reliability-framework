@@ -595,11 +595,7 @@ class RAGGraphMemory:
                 logger.debug(f"Evicted cache entry: {oldest_key}")
     
     def _find_node_by_similarity(self, query_event: ReliabilityEvent, faiss_index: int) -> Optional[IncidentNode]:
-        """
-        Find node by similarity when direct mapping doesn't exist
-        
-        Improved with configurable thresholds
-        """
+        """Find node by similarity when direct mapping doesn't exist"""
         
         for node in self.incident_nodes.values():
             # Check component match
