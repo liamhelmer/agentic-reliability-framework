@@ -5,7 +5,7 @@ Pythonic improvements with type safety
 
 import threading
 import logging
-from typing import Callable, Optional, Dict, Any, TypeVar
+from typing import Callable, Optional, Dict, Any, TypeVar, Generic, cast  # Added Generic, cast
 from contextlib import suppress
 
 from .engine.interfaces import ReliabilityEngineProtocol, MCPProtocol, RAGProtocol
@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 T = TypeVar('T')
 
 
-class LazyLoader:
+class LazyLoader(Generic[T]):  # Added Generic[T]
     """Thread-safe lazy loader with better typing support"""
     
     def __init__(self, loader_func: Callable[[], Optional[T]]) -> None:
@@ -87,13 +87,15 @@ def _load_engine() -> Optional[ReliabilityEngineProtocol]:
         # Use a factory pattern to avoid direct import
         from .engine_factory import create_engine
         logger.info("Loading reliability engine via factory")
-        return create_engine()
+        engine = create_engine()
+        return cast(Optional[ReliabilityEngineProtocol], engine)
     
     # Fallback to direct import only if factory fails
     with suppress(ImportError, Exception):
         from .app import EnhancedReliabilityEngine
         logger.info("Loading EnhancedReliabilityEngine directly")
-        return EnhancedReliabilityEngine()
+        engine = EnhancedReliabilityEngine()
+        return cast(Optional[ReliabilityEngineProtocol], engine)
     
     logger.error("Failed to load reliability engine")
     return None
