@@ -392,7 +392,7 @@ class RAGGraphMemory:
         
         # Reset failures if timeout window passed
         guardrails = config.safety_guardrails
-        failure_timeout = guardrails["circuit_breaker"]["timeout"]
+                failure_timeout = guardrails["circuit_breaker"]["timeout"]
         
         if current_time - self._rag_last_failure_time > failure_timeout:
             self._rag_failures = 0
