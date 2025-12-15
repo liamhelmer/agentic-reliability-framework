@@ -4,7 +4,8 @@ V3 Reliability Engine with RAG integration and learning loop
 Phase 3: Integration & Learning Loop (2 weeks)
 Goal: Connect RAG → Policy → MCP → Outcome recording
 """
-
+from typing import Dict, Any, List, Optional, Union, cast
+import numpy as np
 import threading
 import logging
 from typing import Dict, Any, List, Optional
@@ -364,7 +365,7 @@ class V3ReliabilityEngine(V2Engine):
                                 action_effectiveness[action] = {
                                     "success_count": 0,
                                     "total_count": 0,
-                                    "resolution_times": []
+                                    "resolution_times": []  # type: List[float]
                                 }
                             
                             action_effectiveness[action]["success_count"] += 1
