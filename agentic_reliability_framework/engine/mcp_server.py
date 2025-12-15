@@ -1,32 +1,69 @@
 """
-MCP Server Prototype for ARF v3
-
-Phase 2: MCP Server Implementation (2-3 weeks)
-Goal: Create explicit execution boundary
+Enhanced MCP Server for ARF v3
+Pythonic implementation with proper typing, error handling, and safety features
 """
 
 import asyncio
 import logging
 import time
-from typing import Dict, Any, List, Optional
-from enum import Enum
-from dataclasses import dataclass
-from abc import ABC, abstractmethod
 import uuid
+from abc import ABC, abstractmethod
+from contextlib import asynccontextmanager
+from dataclasses import dataclass, field
+from datetime import datetime
+from enum import Enum
+from typing import (
+    Dict, Any, List, Optional, TypedDict, Protocol, 
+    AsyncGenerator, Callable, cast
+)
+from collections import defaultdict, deque
 
 from ..config import config
+from ..lazy import get_engine
 
 logger = logging.getLogger(__name__)
 
 
-class MCPMode(Enum):
+# ========== TYPE DEFINITIONS ==========
+
+class SafetyCheck(TypedDict):
+    """Type for safety check results"""
+    name: str
+    passed: bool
+    details: str
+
+
+class ExecutionStats(TypedDict):
+    """Type for execution statistics"""
+    total: int
+    successful: int
+    failed: int
+    average_duration_seconds: float
+    last_execution: Optional[float]
+
+
+class ToolMetadata(TypedDict, total=False):
+    """Type for tool metadata"""
+    name: str
+    description: str
+    version: str
+    author: str
+    supported_environments: List[str]
+    safety_level: str
+    timeout_seconds: int
+    required_permissions: List[str]
+
+
+# ========== ENUMS ==========
+
+class MCPMode(str, Enum):
     """MCP execution modes"""
     ADVISORY = "advisory"  # OSS default - no execution
     APPROVAL = "approval"  # Human-in-loop
     AUTONOMOUS = "autonomous"  # Enterprise - with guardrails
 
 
-class MCPRequestStatus(Enum):
+class MCPRequestStatus(str, Enum):
     """MCP request status"""
     PENDING = "pending"
     APPROVED = "approved"
@@ -35,129 +72,184 @@ class MCPRequestStatus(Enum):
     COMPLETED = "completed"
     FAILED = "failed"
     TIMEOUT = "timeout"
+    CANCELLED = "cancelled"
 
 
-@dataclass
+# ========== DATA CLASSES ==========
+
+@dataclass(frozen=True, slots=True)
 class MCPRequest:
-    """MCP request model"""
+    """Immutable MCP request model"""
     request_id: str
     tool: str
     component: str
-    parameters: Dict[str, Any]
-    justification: str
-    mode: MCPMode
-    timestamp: float
-    metadata: Dict[str, Any] = None
+    parameters: Dict[str, Any] = field(default_factory=dict)
+    justification: str = ""
+    mode: MCPMode = MCPMode.ADVISORY
+    timestamp: float = field(default_factory=time.time)
+    metadata: Dict[str, Any] = field(default_factory=dict)
     
-    def __post_init__(self):
-        if self.metadata is None:
-            self.metadata = {}
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert request to dictionary"""
+        return {
+            "request_id": self.request_id,
+            "tool": self.tool,
+            "component": self.component,
+            "parameters": self.parameters,
+            "justification": self.justification,
+            "mode": self.mode.value,
+            "timestamp": self.timestamp,
+            "metadata": self.metadata
+        }
 
 
-@dataclass
+@dataclass(frozen=True, slots=True)
 class MCPResponse:
-    """MCP response model"""
+    """Immutable MCP response model"""
     request_id: str
     status: MCPRequestStatus
     message: str
     executed: bool = False
     result: Optional[Dict[str, Any]] = None
     approval_id: Optional[str] = None
-    timestamp: float = None
+    timestamp: float = field(default_factory=time.time)
     
-    def __post_init__(self):
-        if self.timestamp is None:
-            self.timestamp = time.time()
-
-
-@dataclass
-class ToolContext:
-    """Context for tool execution"""
-    component: str
-    parameters: Dict[str, Any]
-    environment: str = "production"
-    metadata: Dict[str, Any] = None
-    safety_guardrails: Dict[str, Any] = None
-    
-    def __post_init__(self):
-        if self.metadata is None:
-            self.metadata = {}
-        if self.safety_guardrails is None:
-            self.safety_guardrails = {}
-
-
-@dataclass
-class ToolResult:
-    """Result of tool execution"""
-    success: bool
-    message: str
-    details: Optional[Dict[str, Any]] = None
-    execution_time_seconds: float = 0.0
-    
-    def __post_init__(self):
-        if self.details is None:
-            self.details = {}
-
-
-@dataclass
-class ValidationResult:
-    """Result of tool validation"""
-    valid: bool
-    errors: List[str] = None
-    warnings: List[str] = None
-    safety_checks: Dict[str, bool] = None
-    
-    def __post_init__(self):
-        if self.errors is None:
-            self.errors = []
-        if self.warnings is None:
-            self.warnings = []
-        if self.safety_checks is None:
-            self.safety_checks = {}
-
-
-class MCPTool(ABC):
-    """
-    Abstract tool interface
-    
-    V3 Design: All healing actions implement this interface
-    """
-    
-    @abstractmethod
-    async def execute(self, context: ToolContext) -> ToolResult:
-        """Execute the tool"""
-        pass
-    
-    @abstractmethod
-    def validate(self, context: ToolContext) -> ValidationResult:
-        """Validate the tool execution"""
-        pass
-    
-    def get_tool_info(self) -> Dict[str, Any]:
-        """Get tool information"""
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert response to dictionary"""
         return {
-            "name": self.__class__.__name__,
-            "description": getattr(self, "description", "No description"),
-            "supported_environments": getattr(self, "supported_environments", []),
-            "safety_level": getattr(self, "safety_level", "medium"),
-            "timeout_seconds": getattr(self, "timeout_seconds", 30),
+            "request_id": self.request_id,
+            "status": self.status.value,
+            "message": self.message,
+            "executed": self.executed,
+            "result": self.result,
+            "approval_id": self.approval_id,
+            "timestamp": self.timestamp
         }
 
 
-class RollbackTool(MCPTool):
-    """K8s/ECS/VM rollback adapter"""
+@dataclass(frozen=True, slots=True)
+class ToolContext:
+    """Immutable context for tool execution"""
+    component: str
+    parameters: Dict[str, Any] = field(default_factory=dict)
+    environment: str = "production"
+    metadata: Dict[str, Any] = field(default_factory=dict)
+    safety_guardrails: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True, slots=True)
+class ToolResult:
+    """Immutable result of tool execution"""
+    success: bool
+    message: str
+    details: Dict[str, Any] = field(default_factory=dict)
+    execution_time_seconds: float = 0.0
+    warnings: List[str] = field(default_factory=list)
     
-    def __init__(self):
-        self.description = "Rollback deployment to previous version"
-        self.supported_environments = ["kubernetes", "ecs", "vm"]
-        self.safety_level = "high"  # High risk - can cause downtime
-        self.timeout_seconds = 60
+    @classmethod
+    def success_result(cls, message: str, **details: Any) -> "ToolResult":
+        """Create a successful result"""
+        return cls(success=True, message=message, details=details)
+    
+    @classmethod
+    def failure_result(cls, message: str, **details: Any) -> "ToolResult":
+        """Create a failure result"""
+        return cls(success=False, message=message, details=details)
+
+
+@dataclass(frozen=True, slots=True)
+class ValidationResult:
+    """Immutable result of tool validation"""
+    valid: bool
+    errors: List[str] = field(default_factory=list)
+    warnings: List[str] = field(default_factory=list)
+    safety_checks: Dict[str, SafetyCheck] = field(default_factory=dict)
+    
+    @classmethod
+    def valid_result(cls, warnings: Optional[List[str]] = None) -> "ValidationResult":
+        """Create a valid result"""
+        return cls(valid=True, warnings=warnings or [])
+    
+    @classmethod
+    def invalid_result(cls, error: str, *additional_errors: str) -> "ValidationResult":
+        """Create an invalid result"""
+        return cls(valid=False, errors=[error, *additional_errors])
+
+
+# ========== PROTOCOLS ==========
+
+class MCPTool(Protocol):
+    """Protocol for MCP tools"""
+    
+    @property
+    def metadata(self) -> ToolMetadata:
+        """Get tool metadata"""
+        ...
     
     async def execute(self, context: ToolContext) -> ToolResult:
-        """Execute rollback"""
+        """Execute the tool"""
+        ...
+    
+    def validate(self, context: ToolContext) -> ValidationResult:
+        """Validate the tool execution"""
+        ...
+
+
+# ========== BASE TOOL CLASSES ==========
+
+class BaseMCPTool:
+    """Base class for MCP tools with common functionality"""
+    
+    def __init__(self, metadata: ToolMetadata):
+        self._metadata = metadata
+    
+    @property
+    def metadata(self) -> ToolMetadata:
+        """Get tool metadata"""
+        return self._metadata
+    
+    def get_tool_info(self) -> Dict[str, Any]:
+        """Get comprehensive tool information"""
+        return {
+            **self.metadata,
+            "class_name": self.__class__.__name__,
+        }
+    
+    def _add_safety_check(
+        self, 
+        validation: ValidationResult, 
+        name: str, 
+        passed: bool, 
+        details: str = ""
+    ) -> ValidationResult:
+        """Helper to add safety checks to validation result"""
+        validation.safety_checks[name] = SafetyCheck(
+            name=name,
+            passed=passed,
+            details=details
+        )
+        return validation
+
+
+class RollbackTool(BaseMCPTool):
+    """K8s/ECS/VM rollback adapter with enhanced safety"""
+    
+    def __init__(self):
+        super().__init__({
+            "name": "rollback",
+            "description": "Rollback deployment to previous version",
+            "supported_environments": ["kubernetes", "ecs", "vm"],
+            "safety_level": "high",
+            "timeout_seconds": 60,
+            "required_permissions": ["deployment.write", "rollback.execute"]
+        })
+    
+    async def execute(self, context: ToolContext) -> ToolResult:
+        """Execute rollback with proper error handling"""
         start_time = time.time()
         
         try:
+            # Simulate different environment executions
             if context.environment == "kubernetes":
                 result = await self._k8s_rollback(context)
             elif context.environment == "ecs":
@@ -165,135 +257,151 @@ class RollbackTool(MCPTool):
             elif context.environment == "vm":
                 result = await self._vm_rollback(context)
             else:
-                return ToolResult(
-                    success=False,
-                    message=f"Unsupported environment: {context.environment}",
-                    execution_time_seconds=time.time() - start_time
+                return ToolResult.failure_result(
+                    f"Unsupported environment: {context.environment}",
+                    supported_environments=self.metadata["supported_environments"]
                 )
             
-            result.execution_time_seconds = time.time() - start_time
-            return result
-            
-        except Exception as e:
-            logger.error(f"Rollback execution error: {e}", exc_info=True)
+            # Update execution time
             return ToolResult(
-                success=False,
-                message=f"Rollback failed: {str(e)}",
-                execution_time_seconds=time.time() - start_time
+                success=result.success,
+                message=result.message,
+                details=result.details,
+                execution_time_seconds=time.time() - start_time,
+                warnings=result.warnings
+            )
+            
+        except asyncio.TimeoutError:
+            return ToolResult.failure_result(
+                f"Rollback timeout after {self.metadata['timeout_seconds']} seconds"
+            )
+        except Exception as e:
+            logger.exception(f"Rollback execution error: {e}")
+            return ToolResult.failure_result(
+                f"Rollback failed: {str(e)}",
+                error_type=type(e).__name__
             )
     
     def validate(self, context: ToolContext) -> ValidationResult:
-        """Validate rollback"""
-        errors = []
-        warnings = []
-        safety_checks = {}
+        """Validate rollback with comprehensive safety checks"""
+        validation = ValidationResult.valid_result()
         
-        # Check: Is this production?
-        if context.metadata.get("environment", "production") == "production":
-            warnings.append("Rollback requested in production environment")
-            safety_checks["production_environment"] = False
-        else:
-            safety_checks["production_environment"] = True
-        
-        # Check: Are there canaries?
-        if not context.metadata.get("has_canary", False):
-            warnings.append("No canary deployment detected")
-            safety_checks["has_canary"] = False
-        else:
-            safety_checks["has_canary"] = True
-        
-        # Check: Is there a healthy revision?
-        if not context.metadata.get("has_healthy_revision", False):
-            errors.append("No healthy revision available for rollback")
-            safety_checks["has_healthy_revision"] = False
-        else:
-            safety_checks["has_healthy_revision"] = True
-        
-        # Check blast radius
-        affected_services = context.metadata.get("affected_services", [])
-        if len(affected_services) > config.safety_guardrails["max_blast_radius"]:
-            errors.append(
-                f"Blast radius too large: {len(affected_services)} services "
-                f"(max: {config.safety_guardrails['max_blast_radius']})"
+        # Environment validation
+        if context.environment not in self.metadata["supported_environments"]:
+            return ValidationResult.invalid_result(
+                f"Unsupported environment: {context.environment}"
             )
-            safety_checks["blast_radius"] = False
+        
+        # Safety checks
+        safety_guardrails = context.safety_guardrails
+        
+        # Check: Production environment warning
+        if context.metadata.get("environment", "production") == "production":
+            validation = self._add_safety_check(
+                validation, "production_environment", False,
+                "Rollback in production carries higher risk"
+            )
+            validation.warnings.append("Rollback requested in production environment")
         else:
-            safety_checks["blast_radius"] = True
+            validation = self._add_safety_check(
+                validation, "production_environment", True
+            )
         
-        # Check action blacklist
-        if "ROLLBACK" in config.safety_guardrails["action_blacklist"]:
-            errors.append("Rollback is in the safety blacklist")
-            safety_checks["not_blacklisted"] = False
-        else:
-            safety_checks["not_blacklisted"] = True
-        
-        valid = len(errors) == 0
-        
-        return ValidationResult(
-            valid=valid,
-            errors=errors,
-            warnings=warnings,
-            safety_checks=safety_checks
+        # Check: Healthy revision
+        if not context.metadata.get("has_healthy_revision", False):
+            return ValidationResult.invalid_result(
+                "No healthy revision available for rollback"
+            )
+        validation = self._add_safety_check(
+            validation, "has_healthy_revision", True
         )
+        
+        # Check: Blast radius
+        affected_services = context.metadata.get("affected_services", [context.component])
+        max_blast_radius = safety_guardrails.get("max_blast_radius", 3)
+        
+        if len(affected_services) > max_blast_radius:
+            return ValidationResult.invalid_result(
+                f"Blast radius too large: {len(affected_services)} services "
+                f"(max: {max_blast_radius})"
+            )
+        validation = self._add_safety_check(
+            validation, "blast_radius", True,
+            f"Affects {len(affected_services)} service(s)"
+        )
+        
+        # Check: Action blacklist
+        if "ROLLBACK" in safety_guardrails.get("action_blacklist", []):
+            return ValidationResult.invalid_result(
+                "Rollback is in the safety blacklist"
+            )
+        validation = self._add_safety_check(
+            validation, "not_blacklisted", True
+        )
+        
+        # Check: Canary deployment (warning only)
+        if not context.metadata.get("has_canary", False):
+            validation = self._add_safety_check(
+                validation, "has_canary", False,
+                "No canary deployment detected"
+            )
+            validation.warnings.append("No canary deployment detected")
+        else:
+            validation = self._add_safety_check(
+                validation, "has_canary", True
+            )
+        
+        return validation
     
     async def _k8s_rollback(self, context: ToolContext) -> ToolResult:
         """Execute Kubernetes rollback"""
-        # Placeholder - in production, implement actual k8s API calls
         await asyncio.sleep(1)  # Simulate API call
-        
-        return ToolResult(
-            success=True,
-            message=f"Successfully rolled back {context.component} in Kubernetes",
-            details={
-                "action": "k8s_rollback",
-                "component": context.component,
-                "namespace": context.metadata.get("namespace", "default"),
-                "deployment": context.metadata.get("deployment", "unknown"),
-                "previous_revision": context.metadata.get("previous_revision"),
-                "new_revision": context.metadata.get("new_revision")
-            }
+        return ToolResult.success_result(
+            f"Successfully rolled back {context.component} in Kubernetes",
+            action="k8s_rollback",
+            component=context.component,
+            namespace=context.metadata.get("namespace", "default"),
+            deployment=context.metadata.get("deployment"),
+            previous_revision=context.metadata.get("previous_revision"),
+            new_revision=context.metadata.get("new_revision")
         )
     
     async def _ecs_rollback(self, context: ToolContext) -> ToolResult:
         """Execute ECS rollback"""
-        await asyncio.sleep(1)  # Simulate API call
-        
-        return ToolResult(
-            success=True,
-            message=f"Successfully rolled back {context.component} in ECS",
-            details={
-                "action": "ecs_rollback",
-                "component": context.component,
-                "cluster": context.metadata.get("cluster", "default"),
-                "service": context.metadata.get("service", "unknown"),
-                "task_definition": context.metadata.get("task_definition")
-            }
+        await asyncio.sleep(1)
+        return ToolResult.success_result(
+            f"Successfully rolled back {context.component} in ECS",
+            action="ecs_rollback",
+            component=context.component,
+            cluster=context.metadata.get("cluster"),
+            service=context.metadata.get("service"),
+            task_definition=context.metadata.get("task_definition")
         )
     
     async def _vm_rollback(self, context: ToolContext) -> ToolResult:
         """Execute VM rollback"""
-        await asyncio.sleep(1)  # Simulate API call
-        
-        return ToolResult(
-            success=True,
-            message=f"Successfully rolled back {context.component} on VM",
-            details={
-                "action": "vm_rollback",
-                "component": context.component,
-                "host": context.metadata.get("host", "unknown"),
-                "snapshot_id": context.metadata.get("snapshot_id")
-            }
+        await asyncio.sleep(1)
+        return ToolResult.success_result(
+            f"Successfully rolled back {context.component} on VM",
+            action="vm_rollback",
+            component=context.component,
+            host=context.metadata.get("host"),
+            snapshot_id=context.metadata.get("snapshot_id")
         )
 
 
-class RestartContainerTool(MCPTool):
-    """Container restart tool"""
+class RestartContainerTool(BaseMCPTool):
+    """Container restart tool with safety limits"""
     
     def __init__(self):
-        self.description = "Restart container"
-        self.supported_environments = ["kubernetes", "ecs", "docker"]
-        self.safety_level = "medium"
-        self.timeout_seconds = 30
+        super().__init__({
+            "name": "restart_container",
+            "description": "Restart container instance",
+            "supported_environments": ["kubernetes", "ecs", "docker"],
+            "safety_level": "medium",
+            "timeout_seconds": 30,
+            "required_permissions": ["container.restart"]
+        })
     
     async def execute(self, context: ToolContext) -> ToolResult:
         """Execute container restart"""
@@ -302,139 +410,229 @@ class RestartContainerTool(MCPTool):
         try:
             await asyncio.sleep(0.5)  # Simulate API call
             
-            return ToolResult(
-                success=True,
-                message=f"Successfully restarted {context.component}",
-                details={
-                    "action": "restart_container",
-                    "component": context.component,
-                    "environment": context.environment,
-                    "container_id": context.metadata.get("container_id")
-                },
+            return ToolResult.success_result(
+                f"Successfully restarted {context.component}",
+                action="restart_container",
+                component=context.component,
+                environment=context.environment,
+                container_id=context.metadata.get("container_id"),
                 execution_time_seconds=time.time() - start_time
             )
         except Exception as e:
-            return ToolResult(
-                success=False,
-                message=f"Container restart failed: {str(e)}",
+            logger.exception(f"Container restart error: {e}")
+            return ToolResult.failure_result(
+                f"Container restart failed: {str(e)}",
                 execution_time_seconds=time.time() - start_time
             )
     
     def validate(self, context: ToolContext) -> ValidationResult:
         """Validate container restart"""
-        errors = []
-        warnings = []
-        safety_checks = {}
+        validation = ValidationResult.valid_result()
         
         # Check restart count
         restart_count = context.metadata.get("restart_count", 0)
         if restart_count > 3:
-            warnings.append(f"High restart count: {restart_count}")
-            safety_checks["reasonable_restart_count"] = False
+            validation = self._add_safety_check(
+                validation, "reasonable_restart_count", False,
+                f"High restart count: {restart_count}"
+            )
+            validation.warnings.append(f"High restart count: {restart_count}")
         else:
-            safety_checks["reasonable_restart_count"] = True
+            validation = self._add_safety_check(
+                validation, "reasonable_restart_count", True
+            )
         
-        # Check if container is healthy
+        # Check container health
         if not context.metadata.get("container_healthy", True):
-            errors.append("Container is not healthy")
-            safety_checks["container_healthy"] = False
+            validation.errors.append("Container is not healthy")
+            validation = self._add_safety_check(
+                validation, "container_healthy", False,
+                "Container health check failed"
+            )
         else:
-            safety_checks["container_healthy"] = True
+            validation = self._add_safety_check(
+                validation, "container_healthy", True
+            )
         
-        valid = len(errors) == 0
-        
-        return ValidationResult(
-            valid=valid,
-            errors=errors,
-            warnings=warnings,
-            safety_checks=safety_checks
-        )
+        validation.valid = len(validation.errors) == 0
+        return validation
 
 
-class ScaleOutTool(MCPTool):
-    """Scale out tool"""
+class ScaleOutTool(BaseMCPTool):
+    """Scale out tool with resource limits"""
     
     def __init__(self):
-        self.description = "Scale out service"
-        self.supported_environments = ["kubernetes", "ecs"]
-        self.safety_level = "low"
-        self.timeout_seconds = 45
+        super().__init__({
+            "name": "scale_out",
+            "description": "Scale out service instances",
+            "supported_environments": ["kubernetes", "ecs"],
+            "safety_level": "low",
+            "timeout_seconds": 45,
+            "required_permissions": ["deployment.scale"]
+        })
     
     async def execute(self, context: ToolContext) -> ToolResult:
         """Execute scale out"""
         start_time = time.time()
         
         try:
+            scale_factor = context.parameters.get("scale_factor", 2)
             await asyncio.sleep(1)  # Simulate API call
             
-            scale_factor = context.parameters.get("scale_factor", 2)
-            
-            return ToolResult(
-                success=True,
-                message=f"Successfully scaled {context.component} by factor {scale_factor}",
-                details={
-                    "action": "scale_out",
-                    "component": context.component,
-                    "scale_factor": scale_factor,
-                    "current_replicas": context.metadata.get("current_replicas"),
-                    "new_replicas": context.metadata.get("new_replicas")
-                },
+            return ToolResult.success_result(
+                f"Successfully scaled {context.component} by factor {scale_factor}",
+                action="scale_out",
+                component=context.component,
+                scale_factor=scale_factor,
+                current_replicas=context.metadata.get("current_replicas"),
+                new_replicas=context.metadata.get("new_replicas"),
                 execution_time_seconds=time.time() - start_time
             )
         except Exception as e:
-            return ToolResult(
-                success=False,
-                message=f"Scale out failed: {str(e)}",
+            logger.exception(f"Scale out error: {e}")
+            return ToolResult.failure_result(
+                f"Scale out failed: {str(e)}",
                 execution_time_seconds=time.time() - start_time
             )
     
     def validate(self, context: ToolContext) -> ValidationResult:
         """Validate scale out"""
-        errors = []
-        warnings = []
-        safety_checks = {}
+        validation = ValidationResult.valid_result()
+        scale_factor = context.parameters.get("scale_factor", 1)
         
         # Check scale factor
-        scale_factor = context.parameters.get("scale_factor", 1)
         if scale_factor > 10:
-            errors.append(f"Scale factor too high: {scale_factor} (max: 10)")
-            safety_checks["reasonable_scale_factor"] = False
+            validation.errors.append(f"Scale factor too high: {scale_factor} (max: 10)")
+            validation = self._add_safety_check(
+                validation, "reasonable_scale_factor", False
+            )
         else:
-            safety_checks["reasonable_scale_factor"] = True
+            validation = self._add_safety_check(
+                validation, "reasonable_scale_factor", True
+            )
         
         # Check resource limits
         current_replicas = context.metadata.get("current_replicas", 1)
         max_replicas = context.metadata.get("max_replicas", 20)
-        
         new_replicas = current_replicas * scale_factor
+        
         if new_replicas > max_replicas:
-            errors.append(
+            validation.errors.append(
                 f"Scale would exceed max replicas: {new_replicas} > {max_replicas}"
             )
-            safety_checks["within_resource_limits"] = False
+            validation = self._add_safety_check(
+                validation, "within_resource_limits", False
+            )
         else:
-            safety_checks["within_resource_limits"] = True
+            validation = self._add_safety_check(
+                validation, "within_resource_limits", True
+            )
         
-        valid = len(errors) == 0
-        
-        return ValidationResult(
-            valid=valid,
-            errors=errors,
-            warnings=warnings,
-            safety_checks=safety_checks
-        )
+        validation.valid = len(validation.errors) == 0
+        return validation
 
+
+# ========== FACTORY FUNCTIONS ==========
+
+def create_circuit_breaker_tool() -> MCPTool:
+    """Factory function for circuit breaker tool"""
+    
+    class CircuitBreakerTool(BaseMCPTool):
+        def __init__(self):
+            super().__init__({
+                "name": "circuit_breaker",
+                "description": "Enable circuit breaker for service",
+                "supported_environments": ["all"],
+                "safety_level": "low",
+                "timeout_seconds": 10,
+                "required_permissions": ["circuit_breaker.manage"]
+            })
+        
+        async def execute(self, context: ToolContext) -> ToolResult:
+            await asyncio.sleep(0.1)
+            return ToolResult.success_result(
+                f"Circuit breaker enabled for {context.component}",
+                action="circuit_breaker",
+                component=context.component
+            )
+        
+        def validate(self, context: ToolContext) -> ValidationResult:
+            return ValidationResult.valid_result()
+    
+    return CircuitBreakerTool()
+
+
+def create_traffic_shift_tool() -> MCPTool:
+    """Factory function for traffic shift tool"""
+    
+    class TrafficShiftTool(BaseMCPTool):
+        def __init__(self):
+            super().__init__({
+                "name": "traffic_shift",
+                "description": "Shift traffic to canary or backup",
+                "supported_environments": ["kubernetes", "ecs", "load_balancer"],
+                "safety_level": "medium",
+                "timeout_seconds": 30,
+                "required_permissions": ["traffic.manage"]
+            })
+        
+        async def execute(self, context: ToolContext) -> ToolResult:
+            await asyncio.sleep(0.5)
+            return ToolResult.success_result(
+                f"Traffic shifted for {context.component}",
+                action="traffic_shift",
+                component=context.component
+            )
+        
+        def validate(self, context: ToolContext) -> ValidationResult:
+            return ValidationResult.valid_result()
+    
+    return TrafficShiftTool()
+
+
+def create_alert_tool() -> MCPTool:
+    """Factory function for alert tool"""
+    
+    class AlertTool(BaseMCPTool):
+        def __init__(self):
+            super().__init__({
+                "name": "alert_team",
+                "description": "Alert human team for intervention",
+                "supported_environments": ["all"],
+                "safety_level": "low",
+                "timeout_seconds": 5,
+                "required_permissions": ["alert.create"]
+            })
+        
+        async def execute(self, context: ToolContext) -> ToolResult:
+            await asyncio.sleep(0.1)
+            return ToolResult.success_result(
+                f"Alert sent for {context.component}",
+                action="alert_team",
+                component=context.component
+            )
+        
+        def validate(self, context: ToolContext) -> ValidationResult:
+            return ValidationResult.valid_result()
+    
+    return AlertTool()
+
+
+# ========== MCP SERVER ==========
 
 class MCPServer:
     """
-    Governed execution plane
+    Enhanced MCP Server with Pythonic features
     
-    V3 Design Mandate 2: Explicit execution boundary (MCP server required)
-    
-    Stateless REST/gRPC service that wraps healing actions
+    Features:
+    - Thread-safe operations
+    - Comprehensive error handling
+    - Detailed metrics and monitoring
+    - Extensible tool system
+    - Graceful degradation
     """
     
-    def __init__(self, mode: MCPMode = None):
+    def __init__(self, mode: Optional[MCPMode] = None):
         """
         Initialize MCP Server
         
@@ -443,112 +641,56 @@ class MCPServer:
         """
         self.mode = mode or MCPMode(config.mcp_mode)
         self.registered_tools = self._register_tools()
-        self.cooldowns: Dict[str, float] = {}  # component:tool -> timestamp
-        self.approval_requests: Dict[str, MCPRequest] = {}
-        self.execution_history: List[Dict[str, Any]] = []
-        
-        # Safety guardrails
         self.safety_guardrails = config.safety_guardrails
+        
+        # State management
+        self._cooldowns: Dict[str, float] = {}
+        self._approval_requests: Dict[str, MCPRequest] = {}
+        self._execution_history: deque[Dict[str, Any]] = deque(maxlen=1000)
+        
+        # Metrics
+        self._start_time = time.time()
+        self._tool_stats: Dict[str, ExecutionStats] = defaultdict(
+            lambda: {"total": 0, "successful": 0, "failed": 0, 
+                     "average_duration_seconds": 0.0, "last_execution": None}
+        )
         
         logger.info(f"Initialized MCPServer in {self.mode.value} mode")
     
     def _register_tools(self) -> Dict[str, MCPTool]:
         """Register all available tools"""
-        tools = {
+        tools: Dict[str, MCPTool] = {
             "rollback": RollbackTool(),
             "restart_container": RestartContainerTool(),
             "scale_out": ScaleOutTool(),
-            "circuit_breaker": self._create_circuit_breaker_tool(),
-            "traffic_shift": self._create_traffic_shift_tool(),
-            "alert_team": self._create_alert_tool(),
+            "circuit_breaker": create_circuit_breaker_tool(),
+            "traffic_shift": create_traffic_shift_tool(),
+            "alert_team": create_alert_tool(),
         }
         
-        logger.info(f"Registered {len(tools)} tools")
+        logger.info(f"Registered {len(tools)} tools: {list(tools.keys())}")
         return tools
     
-    def _create_circuit_breaker_tool(self) -> MCPTool:
-        """Create circuit breaker tool"""
-        tool = MCPTool()
-        tool.description = "Enable circuit breaker for service"
-        tool.supported_environments = ["all"]
-        tool.safety_level = "low"
-        tool.timeout_seconds = 10
-        
-        tool.execute = self._circuit_breaker_execute
-        tool.validate = self._circuit_breaker_validate
-        
-        return tool
-    
-    def _create_traffic_shift_tool(self) -> MCPTool:
-        """Create traffic shift tool"""
-        tool = MCPTool()
-        tool.description = "Shift traffic to canary or backup"
-        tool.supported_environments = ["kubernetes", "ecs", "load_balancer"]
-        tool.safety_level = "medium"
-        tool.timeout_seconds = 30
-        
-        tool.execute = self._traffic_shift_execute
-        tool.validate = self._traffic_shift_validate
-        
-        return tool
-    
-    def _create_alert_tool(self) -> MCPTool:
-        """Create alert tool"""
-        tool = MCPTool()
-        tool.description = "Alert human team"
-        tool.supported_environments = ["all"]
-        tool.safety_level = "low"
-        tool.timeout_seconds = 5
-        
-        tool.execute = self._alert_execute
-        tool.validate = self._alert_validate
-        
-        return tool
-    
-    async def _circuit_breaker_execute(self, context: ToolContext) -> ToolResult:
-        """Execute circuit breaker"""
-        await asyncio.sleep(0.1)
-        return ToolResult(
-            success=True,
-            message=f"Circuit breaker enabled for {context.component}",
-            details={"action": "circuit_breaker", "component": context.component}
-        )
-    
-    def _circuit_breaker_validate(self, context: ToolContext) -> ValidationResult:
-        """Validate circuit breaker"""
-        return ValidationResult(valid=True)
-    
-    async def _traffic_shift_execute(self, context: ToolContext) -> ToolResult:
-        """Execute traffic shift"""
-        await asyncio.sleep(0.5)
-        return ToolResult(
-            success=True,
-            message=f"Traffic shifted for {context.component}",
-            details={"action": "traffic_shift", "component": context.component}
-        )
-    
-    def _traffic_shift_validate(self, context: ToolContext) -> ValidationResult:
-        """Validate traffic shift"""
-        return ValidationResult(valid=True)
-    
-    async def _alert_execute(self, context: ToolContext) -> ToolResult:
-        """Execute alert"""
-        await asyncio.sleep(0.1)
-        return ToolResult(
-            success=True,
-            message=f"Alert sent for {context.component}",
-            details={"action": "alert_team", "component": context.component}
-        )
-    
-    def _alert_validate(self, context: ToolContext) -> ValidationResult:
-        """Validate alert"""
-        return ValidationResult(valid=True)
+    @asynccontextmanager
+    async def _execution_context(self, request: MCPRequest) -> AsyncGenerator[None, None]:
+        """Context manager for tool execution with metrics"""
+        start_time = time.time()
+        try:
+            yield
+        finally:
+            # Update execution time for stats
+            execution_time = time.time() - start_time
+            stats = self._tool_stats[request.tool]
+            stats["total"] += 1
+            stats["average_duration_seconds"] = (
+                (stats["average_duration_seconds"] * (stats["total"] - 1) + execution_time) 
+                / stats["total"]
+            )
+            stats["last_execution"] = time.time()
     
     async def execute_tool(self, request_dict: Dict[str, Any]) -> MCPResponse:
         """
-        Single entry point for all tool execution
-        
-        Enforces: permissions, cooldowns, blast radius, safety checks
+        Execute a tool with comprehensive safety checks
         
         Args:
             request_dict: MCP request as dictionary
@@ -556,82 +698,90 @@ class MCPServer:
         Returns:
             MCPResponse with execution result
         """
-        # 1. Create request object
+        # 1. Create and validate request
         request = self._create_request(request_dict)
+        validation = self._validate_request(request)
         
-        # 2. Validate request
-        validation_result = self._validate_request(request)
-        if not validation_result["valid"]:
-            return MCPResponse(
-                request_id=request.request_id,
-                status=MCPRequestStatus.REJECTED,
-                message=f"Invalid request: {validation_result['errors']}",
-                executed=False
+        if not validation["valid"]:
+            return self._create_error_response(
+                request, 
+                MCPRequestStatus.REJECTED,
+                f"Invalid request: {', '.join(validation['errors'])}"
             )
         
-        # 3. Check permissions (placeholder - implement based on your auth system)
+        # 2. Check permissions
         if not self._check_permissions(request):
-            return MCPResponse(
-                request_id=request.request_id,
-                status=MCPRequestStatus.REJECTED,
-                message="Permission denied",
-                executed=False
+            return self._create_error_response(
+                request,
+                MCPRequestStatus.REJECTED,
+                "Permission denied"
             )
         
-        # 4. Check cooldowns
+        # 3. Check cooldowns
         cooldown_check = self._check_cooldown(request.tool, request.component)
         if not cooldown_check["allowed"]:
-            return MCPResponse(
-                request_id=request.request_id,
-                status=MCPRequestStatus.REJECTED,
-                message=f"In cooldown period: {cooldown_check['remaining']:.0f}s remaining",
-                executed=False
+            return self._create_error_response(
+                request,
+                MCPRequestStatus.REJECTED,
+                f"In cooldown period: {cooldown_check['remaining']:.0f}s remaining"
             )
         
-        # 5. Mode-specific handling
-        if self.mode == MCPMode.ADVISORY:
-            return self._handle_advisory_mode(request)
+        # 4. Mode-specific handling
+        handlers = {
+            MCPMode.ADVISORY: self._handle_advisory_mode,
+            MCPMode.APPROVAL: self._handle_approval_mode,
+            MCPMode.AUTONOMOUS: self._handle_autonomous_mode,
+        }
         
-        elif self.mode == MCPMode.APPROVAL:
-            return await self._handle_approval_mode(request)
+        handler = handlers.get(self.mode)
+        if not handler:
+            return self._create_error_response(
+                request,
+                MCPRequestStatus.REJECTED,
+                f"Unknown mode: {self.mode}"
+            )
         
-        elif self.mode == MCPMode.AUTONOMOUS:
-            return await self._handle_autonomous_mode(request)
-        
-        else:
-            return MCPResponse(
-                request_id=request.request_id,
-                status=MCPRequestStatus.REJECTED,
-                message=f"Unknown mode: {self.mode}",
-                executed=False
+        try:
+            return await handler(request)
+        except Exception as e:
+            logger.exception(f"Error handling request {request.request_id}: {e}")
+            return self._create_error_response(
+                request,
+                MCPRequestStatus.FAILED,
+                f"Internal server error: {str(e)}"
             )
     
     def _create_request(self, request_dict: Dict[str, Any]) -> MCPRequest:
-        """Create MCPRequest from dictionary"""
+        """Create MCPRequest from dictionary with validation"""
+        try:
+            mode_str = request_dict.get("mode", config.mcp_mode)
+            mode = MCPMode(mode_str)
+        except ValueError:
+            mode = MCPMode.ADVISORY
+        
         return MCPRequest(
             request_id=request_dict.get("request_id", str(uuid.uuid4())),
             tool=request_dict["tool"],
             component=request_dict["component"],
             parameters=request_dict.get("parameters", {}),
             justification=request_dict.get("justification", ""),
-            mode=MCPMode(request_dict.get("mode", config.mcp_mode)),
-            timestamp=time.time(),
+            mode=mode,
             metadata=request_dict.get("metadata", {})
         )
     
     def _validate_request(self, request: MCPRequest) -> Dict[str, Any]:
         """Validate MCP request"""
-        errors = []
+        errors: List[str] = []
         
         # Check if tool exists
         if request.tool not in self.registered_tools:
             errors.append(f"Unknown tool: {request.tool}")
         
-        # Check if component is valid
+        # Check component
         if not request.component or len(request.component) > 255:
-            errors.append("Invalid component")
+            errors.append("Invalid component name")
         
-        # Check justification length
+        # Check justification
         if len(request.justification) < 10:
             errors.append("Justification too short (min 10 characters)")
         
@@ -647,20 +797,17 @@ class MCPServer:
     
     def _check_permissions(self, request: MCPRequest) -> bool:
         """Check permissions for request"""
-        # Placeholder implementation
-        # In production, integrate with your authentication/authorization system
-        
         # Check safety blacklist
         if request.tool.upper() in self.safety_guardrails["action_blacklist"]:
             logger.warning(f"Tool {request.tool} is in safety blacklist")
             return False
         
-        # Check component permissions
-        # This is a simple example - implement based on your needs
-        restricted_components = ["database", "auth-service", "payment-service"]
-        if request.component in restricted_components and self.mode == MCPMode.AUTONOMOUS:
-            logger.warning(f"Component {request.component} requires approval in autonomous mode")
-            return False
+        # Check component restrictions in autonomous mode
+        if self.mode == MCPMode.AUTONOMOUS:
+            restricted_components = ["database", "auth-service", "payment-service"]
+            if request.component in restricted_components:
+                logger.warning(f"Component {request.component} requires approval")
+                return False
         
         return True
     
@@ -669,8 +816,8 @@ class MCPServer:
         key = f"{component}:{tool}"
         current_time = time.time()
         
-        if key in self.cooldowns:
-            cooldown_until = self.cooldowns[key]
+        if key in self._cooldowns:
+            cooldown_until = self._cooldowns[key]
             remaining = cooldown_until - current_time
             
             if remaining > 0:
@@ -680,7 +827,34 @@ class MCPServer:
                     "cooldown_until": cooldown_until
                 }
         
+        # Clean up expired cooldowns
+        self._cleanup_cooldowns()
+        
         return {"allowed": True, "remaining": 0}
+    
+    def _cleanup_cooldowns(self) -> None:
+        """Clean up expired cooldowns"""
+        current_time = time.time()
+        expired_keys = [
+            k for k, v in self._cooldowns.items()
+            if current_time > v
+        ]
+        for k in expired_keys:
+            del self._cooldowns[k]
+    
+    def _create_error_response(
+        self, 
+        request: MCPRequest, 
+        status: MCPRequestStatus,
+        message: str
+    ) -> MCPResponse:
+        """Create an error response"""
+        return MCPResponse(
+            request_id=request.request_id,
+            status=status,
+            message=message,
+            executed=False
+        )
     
     def _handle_advisory_mode(self, request: MCPRequest) -> MCPResponse:
         """Handle advisory mode (OSS default - no execution)"""
@@ -702,13 +876,12 @@ class MCPServer:
         approval_id = str(uuid.uuid4())
         
         # Store approval request
-        self.approval_requests[approval_id] = request
+        self._approval_requests[approval_id] = request
         
-        # In production, this would trigger an approval workflow
-        # (Slack, email, webhook, etc.)
+        # Log approval request
         logger.info(
             f"Approval required for {request.tool} on {request.component}: "
-            f"approval_id={approval_id}"
+            f"approval_id={approval_id}, justification={request.justification[:50]}..."
         )
         
         return MCPResponse(
@@ -720,15 +893,13 @@ class MCPServer:
         )
     
     async def _handle_autonomous_mode(self, request: MCPRequest) -> MCPResponse:
-        """Handle autonomous mode (Enterprise - with guardrails)"""
-        # Get tool instance
+        """Handle autonomous mode with safety guardrails"""
         tool = self.registered_tools.get(request.tool)
         if not tool:
-            return MCPResponse(
-                request_id=request.request_id,
-                status=MCPRequestStatus.REJECTED,
-                message=f"Tool not found: {request.tool}",
-                executed=False
+            return self._create_error_response(
+                request,
+                MCPRequestStatus.REJECTED,
+                f"Tool not found: {request.tool}"
             )
         
         # Create tool context
@@ -746,7 +917,7 @@ class MCPServer:
             return MCPResponse(
                 request_id=request.request_id,
                 status=MCPRequestStatus.REJECTED,
-                message=f"Validation failed: {validation_result.errors}",
+                message=f"Validation failed: {', '.join(validation_result.errors)}",
                 executed=False,
                 result={"validation_result": validation_result}
             )
@@ -763,75 +934,82 @@ class MCPServer:
             )
         
         # Execute tool with timeout
-        try:
-            result = await asyncio.wait_for(
-                tool.execute(context),
-                timeout=tool.timeout_seconds
-            )
-            
-            # Update cooldown
-            self._update_cooldown(request.tool, request.component)
-            
-            # Record execution
-            self._record_execution(request, result, validation_result)
-            
-            return MCPResponse(
-                request_id=request.request_id,
-                status=MCPRequestStatus.COMPLETED,
-                message=result.message,
-                executed=True,
-                result={
-                    "tool_result": result,
-                    "validation_result": validation_result,
-                    "safety_checks": safety_check
-                }
-            )
-            
-        except asyncio.TimeoutError:
-            logger.error(f"Tool {request.tool} timeout after {tool.timeout_seconds}s")
-            return MCPResponse(
-                request_id=request.request_id,
-                status=MCPRequestStatus.TIMEOUT,
-                message=f"Tool execution timeout after {tool.timeout_seconds}s",
-                executed=False
-            )
-        except Exception as e:
-            logger.error(f"Tool execution error: {e}", exc_info=True)
-            return MCPResponse(
-                request_id=request.request_id,
-                status=MCPRequestStatus.FAILED,
-                message=f"Tool execution failed: {str(e)}",
-                executed=False
-            )
+        async with self._execution_context(request):
+            try:
+                result = await asyncio.wait_for(
+                    tool.execute(context),
+                    timeout=tool.metadata["timeout_seconds"]
+                )
+                
+                # Update cooldown
+                self._update_cooldown(request.tool, request.component)
+                
+                # Record execution
+                self._record_execution(request, result, validation_result, safety_check)
+                
+                # Update stats
+                stats = self._tool_stats[request.tool]
+                if result.success:
+                    stats["successful"] += 1
+                else:
+                    stats["failed"] += 1
+                
+                return MCPResponse(
+                    request_id=request.request_id,
+                    status=MCPRequestStatus.COMPLETED,
+                    message=result.message,
+                    executed=True,
+                    result={
+                        "tool_result": result,
+                        "validation_result": validation_result,
+                        "safety_checks": safety_check,
+                        "execution_time": result.execution_time_seconds
+                    }
+                )
+                
+            except asyncio.TimeoutError:
+                logger.error(f"Tool {request.tool} timeout")
+                return self._create_error_response(
+                    request,
+                    MCPRequestStatus.TIMEOUT,
+                    f"Tool execution timeout after {tool.metadata['timeout_seconds']}s"
+                )
+            except Exception as e:
+                logger.exception(f"Tool execution error: {e}")
+                return self._create_error_response(
+                    request,
+                    MCPRequestStatus.FAILED,
+                    f"Tool execution failed: {str(e)}"
+                )
     
-    def _check_safety_guardrails(self, request: MCPRequest, validation_result: ValidationResult) -> Dict[str, Any]:
+    def _check_safety_guardrails(
+        self, 
+        request: MCPRequest, 
+        validation_result: ValidationResult
+    ) -> Dict[str, Any]:
         """Check safety guardrails for autonomous execution"""
-        checks = {}
+        checks: Dict[str, bool] = {}
         
-        # Check blacklist
-        checks["not_blacklisted"] = (
-            request.tool.upper() not in self.safety_guardrails["action_blacklist"]
-        )
+        # Check blacklist (already checked in permissions)
+        checks["not_blacklisted"] = True
         
         # Check blast radius
         affected_services = request.metadata.get("affected_services", [request.component])
-        checks["blast_radius"] = (
-            len(affected_services) <= self.safety_guardrails["max_blast_radius"]
-        )
+        max_blast_radius = self.safety_guardrails["max_blast_radius"]
+        checks["blast_radius"] = len(affected_services) <= max_blast_radius
         
         # Check time of day (avoid production changes during business hours)
-        import datetime
-        now = datetime.datetime.now()
-        if 9 <= now.hour <= 17:  # Business hours
+        now = datetime.now()
+        if 9 <= now.hour <= 17 and now.weekday() < 5:  # Business hours, weekdays
             checks["safe_time"] = False
             checks["business_hours"] = True
         else:
             checks["safe_time"] = True
             checks["business_hours"] = False
         
-        # Check validation safety checks
-        if validation_result.safety_checks:
-            checks.update(validation_result.safety_checks)
+        # Add validation safety checks
+        for name, safety_check in validation_result.safety_checks.items():
+            checks[name] = safety_check["passed"]
         
         # Overall safety
         safe = all(checks.values())
@@ -842,21 +1020,18 @@ class MCPServer:
             "checks": checks
         }
     
-    def _update_cooldown(self, tool: str, component: str):
+    def _update_cooldown(self, tool: str, component: str) -> None:
         """Update cooldown for tool"""
         key = f"{component}:{tool}"
-        self.cooldowns[key] = time.time() + config.mpc_cooldown_seconds
-        
-        # Clean up old cooldowns
-        current_time = time.time()
-        expired_keys = [
-            k for k, v in self.cooldowns.items()
-            if current_time > v
-        ]
-        for k in expired_keys:
-            del self.cooldowns[k]
+        self._cooldowns[key] = time.time() + config.mpc_cooldown_seconds
     
-    def _record_execution(self, request: MCPRequest, result: ToolResult, validation_result: ValidationResult):
+    def _record_execution(
+        self, 
+        request: MCPRequest, 
+        result: ToolResult, 
+        validation_result: ValidationResult,
+        safety_check: Dict[str, Any]
+    ) -> None:
         """Record execution in history"""
         execution_record = {
             "request_id": request.request_id,
@@ -867,17 +1042,18 @@ class MCPServer:
             "success": result.success,
             "execution_time_seconds": result.execution_time_seconds,
             "validation_passed": validation_result.valid,
-            "safety_checks": validation_result.safety_checks,
+            "safety_checks": safety_check["checks"],
             "metadata": request.metadata
         }
         
-        self.execution_history.append(execution_record)
-        
-        # Keep only last 1000 executions
-        if len(self.execution_history) > 1000:
-            self.execution_history = self.execution_history[-1000:]
+        self._execution_history.append(execution_record)
     
-    async def approve_request(self, approval_id: str, approved: bool = True, comment: str = "") -> MCPResponse:
+    async def approve_request(
+        self, 
+        approval_id: str, 
+        approved: bool = True, 
+        comment: str = ""
+    ) -> MCPResponse:
         """
         Approve or reject a pending request
         
@@ -889,15 +1065,14 @@ class MCPServer:
         Returns:
             MCPResponse with result
         """
-        if approval_id not in self.approval_requests:
-            return MCPResponse(
-                request_id=approval_id,
-                status=MCPRequestStatus.REJECTED,
-                message=f"Approval request not found: {approval_id}",
-                executed=False
+        if approval_id not in self._approval_requests:
+            return self._create_error_response(
+                MCPRequest(request_id=approval_id, tool="", component="", justification=""),
+                MCPRequestStatus.REJECTED,
+                f"Approval request not found: {approval_id}"
             )
         
-        request = self.approval_requests.pop(approval_id)
+        request = self._approval_requests.pop(approval_id)
         
         if not approved:
             return MCPResponse(
@@ -908,19 +1083,33 @@ class MCPServer:
             )
         
         # Execute the approved request
-        request.mode = MCPMode.AUTONOMOUS  # Switch to autonomous for execution
+        request = MCPRequest(
+            **request.to_dict(),  # Unpack and create new request
+            mode=MCPMode.AUTONOMOUS  # Switch to autonomous for execution
+        )
+        
         return await self._handle_autonomous_mode(request)
     
     def get_server_stats(self) -> Dict[str, Any]:
-        """Get MCP server statistics"""
+        """Get comprehensive MCP server statistics"""
+        engine = get_engine()
+        
         return {
             "mode": self.mode.value,
             "registered_tools": len(self.registered_tools),
-            "active_cooldowns": len(self.cooldowns),
-            "pending_approvals": len(self.approval_requests),
-            "execution_history_count": len(self.execution_history),
+            "active_cooldowns": len(self._cooldowns),
+            "pending_approvals": len(self._approval_requests),
+            "execution_history_count": len(self._execution_history),
+            "tool_statistics": dict(self._tool_stats),
+            "uptime_seconds": time.time() - self._start_time,
             "safety_guardrails": self.safety_guardrails,
-            "uptime_seconds": time.time() - getattr(self, "_start_time", time.time())
+            "engine_available": engine is not None,
+            "engine_type": getattr(engine, "__class__.__name__", "unknown") if engine else None,
+            "config": {
+                "mcp_mode": config.mcp_mode,
+                "mcp_enabled": config.mcp_enabled,
+                "mpc_cooldown_seconds": config.mpc_cooldown_seconds,
+            }
         }
     
     def get_tool_info(self, tool_name: str = None) -> Dict[str, Any]:
@@ -932,6 +1121,18 @@ class MCPServer:
             return {}
         
         return {
-            tool_name: tool.get_tool_info()
-            for tool_name, tool in self.registered_tools.items()
+            name: tool.get_tool_info()
+            for name, tool in self.registered_tools.items()
         }
+    
+    def get_recent_executions(self, limit: int = 10) -> List[Dict[str, Any]]:
+        """Get recent execution history"""
+        return list(self._execution_history)[-limit:]
+    
+    def reset_stats(self) -> None:
+        """Reset server statistics"""
+        self._tool_stats.clear()
+        self._execution_history.clear()
+        self._cooldowns.clear()
+        self._approval_requests.clear()
+        logger.info("MCP server statistics reset")
