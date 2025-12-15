@@ -1,14 +1,12 @@
-# agentic_reliability_framework/engine/engine_factory.py
 """
 Engine factory for creating v2/v3 engines without circular imports
 """
 
 import logging
-from typing import Optional, Dict, Any
+from typing import Optional, Dict
 from contextlib import suppress
 
 from ..config import config
-from ..models import ReliabilityEvent
 from .interfaces import ReliabilityEngineProtocol
 
 logger = logging.getLogger(__name__)
