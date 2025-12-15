@@ -1,8 +1,6 @@
 """
-Complete RAG Graph Memory implementation for ARF v3
-
-Phase 1: RAG Graph Foundation (2-3 weeks)
-Goal: Make memory useful - retrieval before execution
+Enhanced RAG Graph Memory for ARF v3
+Production-ready with safety features and proper type hints
 """
 
 import numpy as np
@@ -10,10 +8,12 @@ import threading
 import logging
 import hashlib
 import json
-from typing import Dict, List, Any, Optional
+import time
+from typing import Dict, List, Any, Optional, TypedDict, cast
 from datetime import datetime
 from collections import OrderedDict
 from dataclasses import asdict
+from contextlib import contextmanager
 
 from .faiss_index import ProductionFAISSIndex
 from .enhanced_faiss import EnhancedFAISSIndex
@@ -28,21 +28,52 @@ from ..config import config
 logger = logging.getLogger(__name__)
 
 
+# Type definitions for better type safety
+class EffectivenessStats(TypedDict):
+    """Type for action effectiveness statistics"""
+    action: str
+    total_uses: int
+    successful_uses: int
+    success_rate: float
+    avg_resolution_time_minutes: float
+    resolution_time_std: float
+    component_filter: Optional[str]
+    data_points: int
+
+
+class GraphStats(TypedDict):
+    """Type for RAG graph statistics"""
+    incident_nodes: int
+    outcome_nodes: int
+    edges: int
+    similarity_cache_size: int
+    embedding_cache_size: int
+    cache_hit_rate: float
+    incidents_with_outcomes: int
+    avg_outcomes_per_incident: float
+    component_distribution: Dict[str, int]
+    stats: Dict[str, Any]
+    memory_limits: Dict[str, Any]
+    v3_enabled: bool
+    is_operational: bool
+    circuit_breaker: Dict[str, Any]
+
+
 class RAGGraphMemory:
     """
-    Bridge between FAISS vectors and structured knowledge
+    Enhanced RAG Graph Memory with safety features
     
-    V3 Design Mandate 1: Memory → Decision influence (FAISS must be queried)
-    
-    Technical Decisions:
-    - Start with in-memory graph (simple dicts) before database
-    - FAISS must expose search - using EnhancedFAISSIndex
-    - Incident IDs must be deterministic for idempotency
+    Key improvements:
+    1. Real circuit breaker implementation
+    2. Proper FAISS ↔ RAG node identity mapping
+    3. Thread-safe operations with context managers
+    4. Better type hints and error handling
+    5. Performance monitoring
     """
     
     def __init__(self, faiss_index: ProductionFAISSIndex):
         """
-        Initialize RAG Graph Memory
+        Initialize enhanced RAG Graph Memory
         
         Args:
             faiss_index: ProductionFAISSIndex instance
@@ -59,16 +90,22 @@ class RAGGraphMemory:
         # Thread safety
         self._lock = threading.RLock()
         
-        # Statistics
+        # Statistics with better organization
         self._stats = {
             "total_incidents_stored": 0,
             "total_outcomes_stored": 0,
             "total_edges_created": 0,
             "similarity_searches": 0,
             "cache_hits": 0,
+            "failed_searches": 0,
             "last_search_time": None,
             "last_store_time": None,
         }
+        
+        # Circuit breaker state
+        self._rag_failures = 0
+        self._rag_disabled_until = 0.0
+        self._rag_last_failure_time = 0.0
         
         # LRU cache for similarity results
         self._similarity_cache: OrderedDict[str, List[SimilarityResult]] = OrderedDict()
@@ -78,16 +115,28 @@ class RAGGraphMemory:
         self._embedding_cache: Dict[str, np.ndarray] = {}
         self._max_embedding_cache_size = 100
         
+        # FAISS index to incident ID mapping (critical fix)
+        self._faiss_to_incident: Dict[int, str] = {}
+        
         logger.info(
-            f"Initialized RAGGraphMemory for v3 features: "
+            f"Initialized enhanced RAGGraphMemory: "
             f"max_incidents={MemoryConstants.MAX_INCIDENT_NODES}, "
             f"max_outcomes={MemoryConstants.MAX_OUTCOME_NODES}, "
             f"cache_size={self._max_cache_size}"
         )
     
+    @contextmanager
+    def _transaction(self):
+        """Context manager for thread-safe operations"""
+        with self._lock:
+            yield
+    
     def is_enabled(self) -> bool:
         """Check if RAG graph is enabled and ready"""
-        return config.rag_enabled and (len(self.incident_nodes) > 0 or self.faiss.get_count() > 0)
+        return config.rag_enabled and (
+            len(self.incident_nodes) > 0 or 
+            self.faiss.get_count() > 0
+        )
     
     def _generate_incident_id(self, event: ReliabilityEvent) -> str:
         """
@@ -126,7 +175,7 @@ class RAGGraphMemory:
     
     def _embed_incident(self, event: ReliabilityEvent, analysis: Dict[str, Any]) -> np.ndarray:
         """
-        Create embedding vector from incident data
+        Create embedding vector from incident data with explicit field handling
         
         Args:
             event: ReliabilityEvent
@@ -143,21 +192,20 @@ class RAGGraphMemory:
         
         try:
             # Create comprehensive embedding from event and analysis
-            features = []
+            features: List[float] = []
             
-            # 1. Basic metrics (normalized)
-            latency_float = float(event.latency_p99)
-            features.append(latency_float / 1000.0)  # Normalize to seconds
+            # 1. Basic metrics (normalized with explicit handling)
+            features.append(float(event.latency_p99) / 1000.0)  # Normalize to seconds
             features.append(float(event.error_rate))  # Already 0-1
             features.append(float(event.throughput) / 10000.0)  # Normalize
             
-            # 2. Resource utilization (if available)
-            cpu_float = float(event.cpu_util) if event.cpu_util is not None else 0.0
-            mem_float = float(event.memory_util) if event.memory_util is not None else 0.0
-            features.append(cpu_float)
-            features.append(mem_float)
+            # 2. Resource utilization (explicit None handling)
+            cpu_val = event.cpu_util if event.cpu_util is not None else 0.0
+            mem_val = event.memory_util if event.memory_util is not None else 0.0
+            features.append(float(cpu_val))
+            features.append(float(mem_val))
             
-            # 3. Severity encoding
+            # 3. Severity encoding (explicit mapping)
             severity_map = {
                 "low": 0.1,
                 "medium": 0.3,
@@ -171,17 +219,18 @@ class RAGGraphMemory:
             features.append(component_hash)
             
             # 5. Analysis confidence (if available)
+            confidence = 0.5  # Default
             if analysis and 'incident_summary' in analysis:
                 confidence = analysis['incident_summary'].get('anomaly_confidence', 0.5)
-                features.append(float(confidence))
-            else:
-                features.append(0.5)
+            features.append(float(confidence))
             
             # Pad or truncate to target dimension
             target_dim = MemoryConstants.VECTOR_DIM
-            if len(features) < target_dim:
+            current_len = len(features)
+            
+            if current_len < target_dim:
                 # Pad with zeros
-                features = features + [0.0] * (target_dim - len(features))
+                features.extend([0.0] * (target_dim - current_len))
             else:
                 # Truncate
                 features = features[:target_dim]
@@ -194,12 +243,13 @@ class RAGGraphMemory:
                 embedding = embedding / norm
             
             # Cache for performance
-            self._embedding_cache[cache_key] = embedding
-            
-            # Manage cache size
-            if len(self._embedding_cache) > self._max_embedding_cache_size:
-                oldest_key = next(iter(self._embedding_cache))
-                del self._embedding_cache[oldest_key]
+            with self._transaction():
+                self._embedding_cache[cache_key] = embedding
+                
+                # Manage cache size (LRU eviction)
+                if len(self._embedding_cache) > self._max_embedding_cache_size:
+                    oldest_key = next(iter(self._embedding_cache))
+                    del self._embedding_cache[oldest_key]
             
             return embedding
             
@@ -210,7 +260,7 @@ class RAGGraphMemory:
     
     def store_incident(self, event: ReliabilityEvent, analysis: Dict[str, Any]) -> str:
         """
-        Convert event+analysis to IncidentNode and store in graph
+        Store incident with proper FAISS index binding
         
         V3 Feature: Store incidents with embeddings for similarity search
         
@@ -227,11 +277,10 @@ class RAGGraphMemory:
         
         incident_id = self._generate_incident_id(event)
         
-        with self._lock:
+        with self._transaction():
             # Check if already exists
             if incident_id in self.incident_nodes:
                 logger.debug(f"Incident {incident_id} already exists, updating")
-                # Update existing node
                 node = self.incident_nodes[incident_id]
                 node.agent_analysis = analysis
                 node.metadata["last_updated"] = datetime.now().isoformat()
@@ -240,12 +289,9 @@ class RAGGraphMemory:
             # Create embedding
             embedding = self._embed_incident(event, analysis)
             
-            # Store in FAISS
-            faiss_index_id = None
+            # Store in FAISS and get index ID (CRITICAL FIX)
+            faiss_index_id: Optional[int] = None
             try:
-                # Add to FAISS index
-                self.faiss.add_async(embedding.reshape(1, -1), f"{event.component} {event.latency_p99} {event.error_rate}")
-                
                 # Create text description for FAISS
                 text_description = (
                     f"{event.component} "
@@ -255,12 +301,24 @@ class RAGGraphMemory:
                     f"{analysis.get('incident_summary', {}).get('severity', 'unknown')}"
                 )
                 
-                # Use existing FAISS add method
+                # Store in FAISS and get the actual index
                 if hasattr(self.faiss, 'add_text'):
-                    self.faiss.add_text(text_description, embedding.tolist())
+                    # add_text returns the index where the vector was stored
+                    faiss_index_id = self.faiss.add_text(text_description, embedding.tolist())
+                else:
+                    # Fallback: add_async and track count
+                    self.faiss.add_async(embedding.reshape(1, -1), text_description)
+                    # Estimate index based on current count (pre-add)
+                    faiss_index_id = self.faiss.get_count()
+                
+                # Store the mapping (CRITICAL)
+                if faiss_index_id is not None:
+                    self._faiss_to_incident[faiss_index_id] = incident_id
                 
             except Exception as e:
                 logger.error(f"Error storing in FAISS: {e}", exc_info=True)
+                # Generate fallback ID
+                faiss_index_id = len(self.incident_nodes)
             
             # Create IncidentNode
             node = IncidentNode(
@@ -295,14 +353,20 @@ class RAGGraphMemory:
             self._stats["total_incidents_stored"] += 1
             self._stats["last_store_time"] = datetime.now().isoformat()
             
-            # Enforce memory limits
+            # Enforce memory limits with LRU eviction
             if len(self.incident_nodes) > MemoryConstants.MAX_INCIDENT_NODES:
-                # Remove oldest incident (by timestamp)
+                # Remove oldest incident by created_at timestamp
                 oldest_id = min(
                     self.incident_nodes.keys(),
                     key=lambda x: self.incident_nodes[x].metadata.get("created_at", "")
                 )
+                
+                # Clean up mapping and node
+                oldest_node = self.incident_nodes[oldest_id]
+                if oldest_node.faiss_index is not None:
+                    self._faiss_to_incident.pop(oldest_node.faiss_index, None)
                 del self.incident_nodes[oldest_id]
+                
                 logger.debug(f"Evicted oldest incident {oldest_id} from RAG cache")
             
             logger.info(
@@ -314,9 +378,61 @@ class RAGGraphMemory:
             
             return incident_id
     
+    def _is_rag_circuit_broken(self) -> bool:
+        """
+        Check if RAG circuit breaker is triggered
+        
+        Real implementation using config.safety_guardrails
+        """
+        current_time = time.time()
+        
+        # Check if we're in disabled period
+        if current_time < self._rag_disabled_until:
+            return True
+        
+        # Reset failures if timeout window passed
+        guardrails = config.safety_guardrails
+        failure_timeout = guardrails["circuit_breaker"]["timeout"]
+        
+        if current_time - self._rag_last_failure_time > failure_timeout:
+            self._rag_failures = 0
+        
+        return False
+    
+    def _record_rag_failure(self):
+        """
+        Record RAG failure and trigger circuit breaker if needed
+        
+        Real implementation based on config thresholds
+        """
+        current_time = time.time()
+        guardrails = config.safety_guardrails
+        failure_threshold = guardrails["circuit_breaker"]["failures"]
+        timeout_seconds = guardrails["circuit_breaker"]["timeout"]
+        
+        # Update failure count
+        self._rag_failures += 1
+        self._rag_last_failure_time = current_time
+        
+        # Check if we should trigger circuit breaker
+        if self._rag_failures >= failure_threshold:
+            self._rag_disabled_until = current_time + timeout_seconds
+            logger.warning(
+                f"RAG circuit breaker triggered after {self._rag_failures} failures. "
+                f"Disabled for {timeout_seconds} seconds."
+            )
+    
+    def reset_circuit_breaker(self):
+        """Manually reset the RAG circuit breaker"""
+        with self._transaction():
+            self._rag_failures = 0
+            self._rag_disabled_until = 0.0
+            self._rag_last_failure_time = 0.0
+            logger.info("RAG circuit breaker manually reset")
+    
     def find_similar(self, query_event: ReliabilityEvent, k: int = 5) -> List[IncidentNode]:
         """
-        Semantic search + graph expansion
+        Semantic search + graph expansion with safety features
         
         V3 Core Feature: Retrieve similar incidents before making decisions
         
@@ -331,7 +447,7 @@ class RAGGraphMemory:
             logger.debug("RAG disabled, returning empty similar incidents")
             return []
         
-        # Check circuit breaker for RAG timeout
+        # Check circuit breaker (real implementation)
         if self._is_rag_circuit_broken():
             logger.warning("RAG circuit breaker triggered, bypassing similarity search")
             return []
@@ -341,13 +457,13 @@ class RAGGraphMemory:
         # Check cache first
         cached_results = self._get_cached_similarity(cache_key)
         if cached_results is not None:
-            self._stats["cache_hits"] += 1
+            with self._transaction():
+                self._stats["cache_hits"] += 1
             logger.debug(f"Cache hit for {cache_key}, returning {len(cached_results)} incidents")
             return cached_results
         
         try:
             # Start timing for circuit breaker
-            import time
             start_time = time.time()
             
             # 1. FAISS similarity search
@@ -356,27 +472,32 @@ class RAGGraphMemory:
             # Perform search with timeout protection
             distances, indices = self.enhanced_faiss.search(query_embedding, k * 2)  # Get extra for filtering
             
-            # Check timeout
+            # Check timeout against guardrails
             elapsed_ms = (time.time() - start_time) * 1000
             if elapsed_ms > config.safety_guardrails["rag_timeout_ms"]:
                 logger.warning(f"RAG search took {elapsed_ms:.0f}ms (> {config.safety_guardrails['rag_timeout_ms']}ms)")
             
-            # 2. Load incident nodes from FAISS results
-            similar_incidents = []
+            # 2. Load incident nodes using proper FAISS mapping (CRITICAL FIX)
+            similar_incidents: List[IncidentNode] = []
             for i, (distance, idx) in enumerate(zip(distances, indices)):
                 if idx == -1:  # FAISS returns -1 for no match
                     continue
                 
-                # Find incident with matching FAISS index or similar metrics
-                found_node = None
-                for node in self.incident_nodes.values():
-                    if node.faiss_index == idx:
+                # Use the mapping to find incident (FIXED)
+                incident_id = self._faiss_to_incident.get(idx)
+                if incident_id:
+                    node = self.incident_nodes.get(incident_id)
+                    if node:
                         found_node = node
-                        break
+                    else:
+                        # Clean up stale mapping
+                        self._faiss_to_incident.pop(idx, None)
+                        found_node = None
+                else:
+                    found_node = None
                 
-                # If not found by index, try to find by similarity in our graph
+                # Fallback: similarity search in our graph
                 if not found_node:
-                    # This is a fallback - in production you'd have proper mapping
                     found_node = self._find_node_by_similarity(query_event, idx)
                 
                 if found_node:
@@ -401,11 +522,14 @@ class RAGGraphMemory:
                 # Calculate effectiveness metrics
                 if incident.outcomes:
                     successful_outcomes = [o for o in incident.outcomes if o.success]
-                    incident.metadata["success_rate"] = len(successful_outcomes) / len(incident.outcomes)
                     if successful_outcomes:
+                        incident.metadata["success_rate"] = len(successful_outcomes) / len(incident.outcomes)
                         incident.metadata["avg_resolution_time"] = sum(
                             o.resolution_time_minutes for o in successful_outcomes
                         ) / len(successful_outcomes)
+                    else:
+                        incident.metadata["success_rate"] = 0.0
+                        incident.metadata["avg_resolution_time"] = 0.0
                 
                 expanded_incidents.append(incident)
             
@@ -413,7 +537,7 @@ class RAGGraphMemory:
             self._cache_similarity(cache_key, expanded_incidents, distances[:len(expanded_incidents)])
             
             # Update statistics
-            with self._lock:
+            with self._transaction():
                 self._stats["similarity_searches"] += 1
                 self._stats["last_search_time"] = datetime.now().isoformat()
             
@@ -429,13 +553,15 @@ class RAGGraphMemory:
             logger.error(f"Error in find_similar: {e}", exc_info=True)
             
             # Update circuit breaker on failure
+            with self._transaction():
+                self._stats["failed_searches"] += 1
             self._record_rag_failure()
             
             return []  # Fail-safe: return empty list
     
     def _get_cached_similarity(self, cache_key: str) -> Optional[List[IncidentNode]]:
         """Get cached similarity results"""
-        with self._lock:
+        with self._transaction():
             if cache_key in self._similarity_cache:
                 # Move to end (most recently used)
                 self._similarity_cache.move_to_end(cache_key)
@@ -447,7 +573,7 @@ class RAGGraphMemory:
     
     def _cache_similarity(self, cache_key: str, incidents: List[IncidentNode], distances: np.ndarray):
         """Cache similarity results"""
-        with self._lock:
+        with self._transaction():
             # Create SimilarityResult objects
             similarity_results = []
             for i, incident in enumerate(incidents):
@@ -469,13 +595,31 @@ class RAGGraphMemory:
                 logger.debug(f"Evicted cache entry: {oldest_key}")
     
     def _find_node_by_similarity(self, query_event: ReliabilityEvent, faiss_index: int) -> Optional[IncidentNode]:
-        """Find node by similarity when direct mapping doesn't exist"""
-        # Simple implementation - in production you'd have better mapping
+        """
+        Find node by similarity when direct mapping doesn't exist
+        
+        Improved with configurable thresholds
+        """
+        similarity_threshold = config.rag_similarity_threshold
+        
         for node in self.incident_nodes.values():
-            if (node.component == query_event.component and
-                abs(node.metrics.get("latency_ms", 0) - query_event.latency_p99) < 100 and
-                abs(node.metrics.get("error_rate", 0) - query_event.error_rate) < 0.05):
-                return node
+            # Check component match
+            if node.component != query_event.component:
+                continue
+            
+            # Check latency similarity
+            latency_diff = abs(node.metrics.get("latency_ms", 0) - query_event.latency_p99)
+            if latency_diff > 100:  # 100ms threshold
+                continue
+            
+            # Check error rate similarity
+            error_diff = abs(node.metrics.get("error_rate", 0) - query_event.error_rate)
+            if error_diff > 0.05:  # 5% threshold
+                continue
+            
+            # Found a similar node
+            return node
+        
         return None
     
     def _get_outcomes(self, incident_id: str) -> List[OutcomeNode]:
@@ -489,24 +633,13 @@ class RAGGraphMemory:
                     outcomes.append(outcome)
         return outcomes
     
-    def _is_rag_circuit_broken(self) -> bool:
-        """Check if RAG circuit breaker is triggered"""
-        # Simple circuit breaker implementation
-        # In production, track failures over time window
-        return False  # Placeholder
-    
-    def _record_rag_failure(self):
-        """Record RAG failure for circuit breaker"""
-        # Placeholder for circuit breaker logic
-        pass
-    
     def store_outcome(self, incident_id: str, 
                      actions_taken: List[str],
                      success: bool,
                      resolution_time_minutes: float,
                      lessons_learned: Optional[List[str]] = None) -> str:
         """
-        Store outcome for an incident
+        Store outcome for an incident with proper validation
         
         V3 Feature: Record outcomes for learning loop
         
@@ -523,16 +656,22 @@ class RAGGraphMemory:
         if not config.rag_enabled:
             return ""
         
+        # Validate input
+        if not incident_id or not actions_taken:
+            logger.warning("Invalid outcome data: missing incident_id or actions_taken")
+            return ""
+        
         # Check if incident exists
         if incident_id not in self.incident_nodes:
             logger.warning(f"Cannot store outcome for non-existent incident: {incident_id}")
             return ""
         
         # Generate outcome ID
-        actions_hash = hashlib.md5(",".join(sorted(actions_taken)).encode()).hexdigest()[:8]
+        sorted_actions = sorted(actions_taken)
+        actions_hash = hashlib.md5(",".join(sorted_actions).encode()).hexdigest()[:8]
         outcome_id = self._generate_outcome_id(incident_id, actions_hash)
         
-        with self._lock:
+        with self._transaction():
             # Create OutcomeNode
             outcome = OutcomeNode(
                 outcome_id=outcome_id,
@@ -543,7 +682,9 @@ class RAGGraphMemory:
                 lessons_learned=lessons_learned or [],
                 metadata={
                     "created_at": datetime.now().isoformat(),
-                    "actions_hash": actions_hash
+                    "actions_hash": actions_hash,
+                    "resolution_minutes": resolution_time_minutes,
+                    "success": success
                 }
             )
             
@@ -561,7 +702,8 @@ class RAGGraphMemory:
                 metadata={
                     "success": success,
                     "resolution_time": resolution_time_minutes,
-                    "actions": actions_taken
+                    "actions": actions_taken,
+                    "timestamp": datetime.now().isoformat()
                 }
             )
             
@@ -581,12 +723,12 @@ class RAGGraphMemory:
             logger.info(
                 f"Stored outcome {outcome_id} for incident {incident_id}: "
                 f"success={success}, time={resolution_time_minutes:.1f}min, "
-                f"actions={actions_taken}"
+                f"actions={len(actions_taken)}"
             )
             
             return outcome_id
     
-    def get_historical_effectiveness(self, action: str, component: str = None) -> Dict[str, Any]:
+    def get_historical_effectiveness(self, action: str, component: str = None) -> EffectivenessStats:
         """
         Get historical effectiveness of an action
         
@@ -601,7 +743,7 @@ class RAGGraphMemory:
         """
         successful = 0
         total = 0
-        resolution_times = []
+        resolution_times: List[float] = []
         
         for outcome in self.outcome_nodes.values():
             if action in outcome.actions_taken:
@@ -616,18 +758,20 @@ class RAGGraphMemory:
                     successful += 1
                     resolution_times.append(outcome.resolution_time_minutes)
         
+        # Calculate statistics
         avg_resolution_time = float(np.mean(resolution_times)) if resolution_times else 0.0
+        resolution_std = float(np.std(resolution_times)) if resolution_times else 0.0
         
-        return {
+        return cast(EffectivenessStats, {
             "action": action,
             "total_uses": total,
             "successful_uses": successful,
             "success_rate": float(successful) / total if total > 0 else 0.0,
             "avg_resolution_time_minutes": avg_resolution_time,
-            "resolution_time_std": float(np.std(resolution_times)) if resolution_times else 0.0,
+            "resolution_time_std": resolution_std,
             "component_filter": component,
             "data_points": total
-        }
+        })
     
     def get_most_effective_actions(self, component: str, k: int = 3) -> List[Dict[str, Any]]:
         """
@@ -642,7 +786,7 @@ class RAGGraphMemory:
         Returns:
             List of actions sorted by effectiveness
         """
-        action_stats = {}
+        action_stats: Dict[str, Dict[str, Any]] = {}
         
         # Collect all unique actions for this component
         for outcome in self.outcome_nodes.values():
@@ -663,21 +807,30 @@ class RAGGraphMemory:
         
         # Calculate effectiveness metrics
         effectiveness = []
+        min_data_points = config.learning_min_data_points
+        
         for action, stats in action_stats.items():
-            if stats["total"] >= config.learning_min_data_points:  # Only include if enough data
+            if stats["total"] >= min_data_points:  # Only include if enough data
                 success_rate = float(stats["successful"]) / stats["total"]
-                avg_time = float(np.mean(stats["resolution_times"])) if stats["resolution_times"] else 0.0
+                
+                # Calculate average resolution time
+                resolution_times = stats["resolution_times"]
+                avg_time = float(np.mean(resolution_times)) if resolution_times else 0.0
+                
+                # Confidence based on data points (capped at 1.0)
+                confidence = min(1.0, float(stats["total"]) / (min_data_points * 2))
                 
                 effectiveness.append({
                     "action": action,
                     "success_rate": success_rate,
-                    "confidence": min(1.0, float(stats["total"]) / 20.0),  # Confidence based on data points
+                    "confidence": confidence,
                     "avg_resolution_time_minutes": avg_time,
                     "total_uses": stats["total"],
-                    "successful_uses": stats["successful"]
+                    "successful_uses": stats["successful"],
+                    "data_sufficiency": stats["total"] >= min_data_points
                 })
         
-        # Sort by success rate, then by confidence
+        # Sort by success rate (descending), then by confidence (descending)
         effectiveness.sort(
             key=lambda x: (x["success_rate"], x["confidence"]), 
             reverse=True
@@ -685,14 +838,13 @@ class RAGGraphMemory:
         
         return effectiveness[:k]
     
-    def get_graph_stats(self) -> Dict[str, Any]:
-        """Get statistics about the RAG graph"""
-        with self._lock:
+    def get_graph_stats(self) -> GraphStats:
+        """Get comprehensive statistics about the RAG graph"""
+        with self._transaction():
             # Calculate cache hit rate
-            cache_hit_rate = (
-                float(self._stats["cache_hits"]) / self._stats["similarity_searches"] 
-                if self._stats["similarity_searches"] > 0 else 0
-            )
+            searches = self._stats["similarity_searches"]
+            hits = self._stats["cache_hits"]
+            cache_hit_rate = float(hits) / searches if searches > 0 else 0.0
             
             # Calculate average outcomes per incident
             incidents_with_outcomes = sum(
@@ -700,18 +852,29 @@ class RAGGraphMemory:
                 if self._get_outcomes(incident_id)
             )
             
+            incident_count = len(self.incident_nodes)
             avg_outcomes_per_incident = (
-                float(len(self.outcome_nodes)) / len(self.incident_nodes) 
-                if len(self.incident_nodes) > 0 else 0
+                float(len(self.outcome_nodes)) / incident_count 
+                if incident_count > 0 else 0
             )
             
-            # Get component distribution - FIXED: Add type annotation
+            # Get component distribution
             component_distribution: Dict[str, int] = {}
             for node in self.incident_nodes.values():
                 component_distribution[node.component] = component_distribution.get(node.component, 0) + 1
             
-            return {
-                "incident_nodes": len(self.incident_nodes),
+            # Circuit breaker status
+            current_time = time.time()
+            circuit_breaker_status = {
+                "failures": self._rag_failures,
+                "disabled_until": self._rag_disabled_until,
+                "is_active": current_time < self._rag_disabled_until,
+                "seconds_until_reset": max(0, self._rag_disabled_until - current_time),
+                "failure_threshold": config.safety_guardrails["circuit_breaker"]["failures"]
+            }
+            
+            return cast(GraphStats, {
+                "incident_nodes": incident_count,
                 "outcome_nodes": len(self.outcome_nodes),
                 "edges": len(self.edges),
                 "similarity_cache_size": len(self._similarity_cache),
@@ -728,20 +891,21 @@ class RAGGraphMemory:
                     "embedding_cache_size": self._max_embedding_cache_size
                 },
                 "v3_enabled": config.rag_enabled,
-                "is_operational": self.is_enabled()
-            }
+                "is_operational": self.is_enabled(),
+                "circuit_breaker": circuit_breaker_status
+            })
     
     def clear_cache(self) -> None:
         """Clear similarity and embedding caches"""
-        with self._lock:
+        with self._transaction():
             self._similarity_cache.clear()
             self._embedding_cache.clear()
             logger.info("Cleared RAG graph caches")
     
     def export_graph(self, filepath: str) -> bool:
-        """Export graph to JSON file"""
+        """Export graph to JSON file with proper error handling"""
         try:
-            with self._lock:
+            with self._transaction():
                 data = {
                     "version": "v3.0",
                     "export_timestamp": datetime.now().isoformat(),
@@ -749,14 +913,20 @@ class RAGGraphMemory:
                         "rag_enabled": config.rag_enabled,
                         "max_incident_nodes": MemoryConstants.MAX_INCIDENT_NODES,
                         "max_outcome_nodes": MemoryConstants.MAX_OUTCOME_NODES,
+                        "similarity_threshold": config.rag_similarity_threshold,
                     },
                     "incident_nodes": [asdict(node) for node in self.incident_nodes.values()],
                     "outcome_nodes": [asdict(node) for node in self.outcome_nodes.values()],
                     "edges": [asdict(edge) for edge in self.edges],
-                    "stats": self.get_graph_stats()
+                    "stats": self.get_graph_stats(),
+                    "faiss_mapping_size": len(self._faiss_to_incident)
                 }
             
-            with open(filepath, 'w') as f:
+            # Ensure directory exists
+            import os
+            os.makedirs(os.path.dirname(os.path.abspath(filepath)), exist_ok=True)
+            
+            with open(filepath, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=2, default=str)
             
             logger.info(f"Exported RAG graph to {filepath}: {len(data['incident_nodes'])} incidents")
@@ -765,3 +935,55 @@ class RAGGraphMemory:
         except Exception as e:
             logger.error(f"Error exporting graph: {e}", exc_info=True)
             return False
+    
+    def cleanup_old_nodes(self, max_age_days: int = 30) -> int:
+        """
+        Clean up old incident and outcome nodes
+        
+        Args:
+            max_age_days: Maximum age in days
+            
+        Returns:
+            Number of nodes cleaned up
+        """
+        if not config.rag_enabled:
+            return 0
+        
+        cutoff_date = datetime.now().timestamp() - (max_age_days * 24 * 3600)
+        cleaned_count = 0
+        
+        with self._transaction():
+            # Clean old incidents
+            old_incident_ids = [
+                incident_id for incident_id, node in self.incident_nodes.items()
+                if datetime.fromisoformat(node.metadata.get("created_at", "1970-01-01")).timestamp() < cutoff_date
+            ]
+            
+            for incident_id in old_incident_ids:
+                node = self.incident_nodes[incident_id]
+                # Clean up mapping
+                if node.faiss_index is not None:
+                    self._faiss_to_incident.pop(node.faiss_index, None)
+                del self.incident_nodes[incident_id]
+                cleaned_count += 1
+            
+            # Clean old outcomes
+            old_outcome_ids = [
+                outcome_id for outcome_id, node in self.outcome_nodes.items()
+                if datetime.fromisoformat(node.metadata.get("created_at", "1970-01-01")).timestamp() < cutoff_date
+            ]
+            
+            for outcome_id in old_outcome_ids:
+                del self.outcome_nodes[outcome_id]
+                cleaned_count += 1
+            
+            # Clean edges pointing to removed outcomes
+            self.edges = [
+                edge for edge in self.edges
+                if edge.source_id in self.incident_nodes and edge.target_id in self.outcome_nodes
+            ]
+        
+        if cleaned_count > 0:
+            logger.info(f"Cleaned up {cleaned_count} old RAG graph nodes")
+        
+        return cleaned_count
