@@ -230,11 +230,11 @@ class Config(BaseModel):
                 field_type = field_info.annotation
                 
                 try:
-                    if field_type is bool or field_type == bool:
+                    if field_type is bool:
                         env_vars[field_name] = env_value.lower() in ("true", "1", "yes", "y", "t", "on", "enabled")
-                    elif field_type is int or field_type == int:
+                    elif field_type is int:
                         env_vars[field_name] = int(env_value)
-                    elif field_type is float or field_type == float:
+                    elif field_type is float:
                         env_vars[field_name] = float(env_value)
                     else:
                         env_vars[field_name] = env_value
