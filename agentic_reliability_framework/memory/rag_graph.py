@@ -152,15 +152,8 @@ class RAGGraphMemory:
             features.append(event.throughput / 10000.0)  # Normalize
             
             # 2. Resource utilization (if available)
-            if event.cpu_util:
-                features.append(event.cpu_util)
-            else:
-                features.append(0.0)
-                
-            if event.memory_util:
-                features.append(event.memory_util)
-            else:
-                features.append(0.0)
+            features.append(float(event.cpu_util) if event.cpu_util is not None else 0.0)
+            features.append(float(event.memory_util) if event.memory_util is not None else 0.0)
             
             # 3. Severity encoding
             severity_map = {
