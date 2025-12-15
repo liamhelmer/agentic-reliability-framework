@@ -513,23 +513,32 @@ class RAGGraphMemory:
                     if len(similar_incidents) >= k:
                         break
             
-            # 3. Graph expansion (get outcomes)
+            # 3. Graph expansion (get outcomes) - FIXED: Don't modify IncidentNode.outcomes
             expanded_incidents = []
             for incident in similar_incidents:
                 # Get outcomes for this incident
-                incident.outcomes = self._get_outcomes(incident.incident_id)
+                incident_outcomes = self._get_outcomes(incident.incident_id)
                 
-                # Calculate effectiveness metrics
-                if incident.outcomes:
-                    successful_outcomes = [o for o in incident.outcomes if o.success]
+                # Calculate effectiveness metrics and store in metadata
+                if incident_outcomes:
+                    successful_outcomes = [o for o in incident_outcomes if o.success]
                     if successful_outcomes:
-                        incident.metadata["success_rate"] = len(successful_outcomes) / len(incident.outcomes)
+                        incident.metadata["success_rate"] = len(successful_outcomes) / len(incident_outcomes)
                         incident.metadata["avg_resolution_time"] = sum(
                             o.resolution_time_minutes for o in successful_outcomes
                         ) / len(successful_outcomes)
                     else:
                         incident.metadata["success_rate"] = 0.0
                         incident.metadata["avg_resolution_time"] = 0.0
+                    
+                    # Store outcomes count in metadata
+                    incident.metadata["outcomes_count"] = len(incident_outcomes)
+                    incident.metadata["successful_outcomes_count"] = len(successful_outcomes)
+                else:
+                    incident.metadata["success_rate"] = 0.0
+                    incident.metadata["avg_resolution_time"] = 0.0
+                    incident.metadata["outcomes_count"] = 0
+                    incident.metadata["successful_outcomes_count"] = 0
                 
                 expanded_incidents.append(incident)
             
@@ -804,7 +813,14 @@ class RAGGraphMemory:
                 for sub_key, sub_value in value.items():
                     if isinstance(sub_value, np.ndarray):
                         data[key][sub_key] = sub_value.tolist()
-        return data
+            # Handle nested lists that might contain numpy arrays
+            elif isinstance(value, list):
+                for i, item in enumerate(value):
+                    if isinstance(item, np.ndarray):
+                        data[key][i] = item.tolist()
+        
+        # Explicitly cast to Dict[str, Any] for mypy
+        return cast(Dict[str, Any], data)
     
     def get_most_effective_actions(self, component: str, k: int = 3) -> List[Dict[str, Any]]:
         """
@@ -952,6 +968,7 @@ class RAGGraphMemory:
                         "max_outcome_nodes": MemoryConstants.MAX_OUTCOME_NODES,
                         "similarity_threshold": config.rag_similarity_threshold,
                     },
+                    # FIXED: Use _serialize_node for proper serialization
                     "incident_nodes": [self._serialize_node(node) for node in self.incident_nodes.values()],
                     "outcome_nodes": [self._serialize_node(node) for node in self.outcome_nodes.values()],
                     "edges": [self._serialize_node(edge) for edge in self.edges],
