@@ -178,3 +178,31 @@ class ProductionFAISSIndex:
     def get_index(self):
         """Get the underlying FAISS index"""
         return self.index
+
+def create_faiss_index():
+    """Factory function to create FAISS index for lazy loading"""
+    try:
+        import faiss
+        import json
+        import os
+        from ..config import config
+        from .constants import MemoryConstants
+        
+        if os.path.exists(config.index_file):
+            index = faiss.read_index(config.index_file)
+            if index.d != MemoryConstants.VECTOR_DIM:
+                index = faiss.IndexFlatL2(MemoryConstants.VECTOR_DIM)
+                texts = []
+            else:
+                with open(config.incident_texts_file, "r") as f:
+                    texts = json.load(f)
+        else:
+            index = faiss.IndexFlatL2(MemoryConstants.VECTOR_DIM)
+            texts = []
+        
+        return ProductionFAISSIndex(index, texts)
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error creating FAISS index: {e}")
+        return None
