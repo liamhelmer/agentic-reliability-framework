@@ -600,7 +600,6 @@ class RAGGraphMemory:
         
         Improved with configurable thresholds
         """
-        similarity_threshold = config.rag_similarity_threshold
         
         for node in self.incident_nodes.values():
             # Check component match
