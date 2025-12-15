@@ -792,7 +792,7 @@ class RAGGraphMemory:
                         action_stats[action] = {
                             "total": 0,
                             "successful": 0,
-                            "resolution_times": []  # type: List[float]
+                            "resolution_times": [],  # type: List[float]
                         }
                     
                     action_stats[action]["total"] += 1
