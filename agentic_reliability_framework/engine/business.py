@@ -5,13 +5,23 @@ Extracted from app.py for modularity
 
 import threading
 import logging
-from typing import Dict, List, Any, Optional  # noqa: F401
-from collections import deque  # noqa: F401
+from typing import Dict, List, Any, Optional, Union, Tuple, cast
+from collections import deque
+from dataclasses import dataclass
 
 from ..models import ReliabilityEvent
 from ..config import config
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class BusinessImpactResult:
+    """Business impact calculation result"""
+    revenue_loss_estimate: float
+    affected_users_estimate: int
+    severity_level: str
+    throughput_reduction_pct: float
 
 
 class BusinessImpactCalculator:
@@ -27,52 +37,77 @@ class BusinessImpactCalculator:
         duration_minutes: int = 5
     ) -> Dict[str, Any]:
         """Calculate business impact for a reliability event"""
-        base_revenue_per_minute = config.base_revenue_per_minute
+        try:
+            base_revenue_per_minute = config.base_revenue_per_minute
+            
+            impact_multiplier = 1.0
+            
+            # Impact factors
+            if event.latency_p99 > config.latency_critical:
+                impact_multiplier += 0.5
+            if event.error_rate > 0.1:
+                impact_multiplier += 0.8
+            if event.cpu_util and event.cpu_util > config.cpu_critical:
+                impact_multiplier += 0.3
+            
+            revenue_loss = base_revenue_per_minute * impact_multiplier * (duration_minutes / 60)
+            
+            base_users_affected = config.base_users
+            user_impact_multiplier = (event.error_rate * 10) + \
+                (max(0, event.latency_p99 - 100) / 500)
+            affected_users = int(base_users_affected * user_impact_multiplier)
+            
+            # Severity classification
+            if revenue_loss > 500 or affected_users > 5000:
+                severity = "CRITICAL"
+            elif revenue_loss > 100 or affected_users > 1000:
+                severity = "HIGH"
+            elif revenue_loss > 50 or affected_users > 500:
+                severity = "MEDIUM"
+            else:
+                severity = "LOW"
+            
+            logger.info(
+                f"Business impact: {revenue_loss:.2f} revenue loss, "
+                f"{affected_users} users, {severity} severity"
+            )
+            
+            return {
+                'revenue_loss_estimate': round(revenue_loss, 2),
+                'affected_users_estimate': affected_users,
+                'severity_level': severity,
+                'throughput_reduction_pct': round(min(100, user_impact_multiplier * 100), 1)
+            }
         
-        impact_multiplier = 1.0
+        except Exception as e:
+            logger.error(f"Error calculating business impact: {e}")
+            return {
+                'revenue_loss_estimate': 0.0,
+                'affected_users_estimate': 0,
+                'severity_level': "LOW",
+                'throughput_reduction_pct': 0.0
+            }
+    
+    def calculate_impact_detailed(
+        self,
+        event: ReliabilityEvent,
+        duration_minutes: int = 5
+    ) -> BusinessImpactResult:
+        """Calculate business impact with detailed result"""
+        impact_dict = self.calculate_impact(event, duration_minutes)
         
-        # Impact factors
-        if event.latency_p99 > config.latency_critical:
-            impact_multiplier += 0.5
-        if event.error_rate > 0.1:
-            impact_multiplier += 0.8
-        if event.cpu_util and event.cpu_util > config.cpu_critical:
-            impact_multiplier += 0.3
-        
-        revenue_loss = base_revenue_per_minute * impact_multiplier * (duration_minutes / 60)
-        
-        base_users_affected = config.base_users
-        user_impact_multiplier = (event.error_rate * 10) + \
-            (max(0, event.latency_p99 - 100) / 500)
-        affected_users = int(base_users_affected * user_impact_multiplier)
-        
-        # Severity classification
-        if revenue_loss > 500 or affected_users > 5000:
-            severity = "CRITICAL"
-        elif revenue_loss > 100 or affected_users > 1000:
-            severity = "HIGH"
-        elif revenue_loss > 50 or affected_users > 500:
-            severity = "MEDIUM"
-        else:
-            severity = "LOW"
-        
-        logger.info(
-            f"Business impact: {revenue_loss:.2f} revenue loss, "
-            f"{affected_users} users, {severity} severity"
+        return BusinessImpactResult(
+            revenue_loss_estimate=float(impact_dict['revenue_loss_estimate']),
+            affected_users_estimate=int(impact_dict['affected_users_estimate']),
+            severity_level=str(impact_dict['severity_level']),
+            throughput_reduction_pct=float(impact_dict['throughput_reduction_pct'])
         )
-        
-        return {
-            'revenue_loss_estimate': round(revenue_loss, 2),
-            'affected_users_estimate': affected_users,
-            'severity_level': severity,
-            'throughput_reduction_pct': round(min(100, user_impact_multiplier * 100), 1)
-        }
 
 
 class BusinessMetricsTracker:
     """Track cumulative business metrics for ROI dashboard"""
     
-    def __init__(self):
+    def __init__(self) -> None:
         self.total_incidents: int = 0
         self.incidents_auto_healed: int = 0
         self.total_revenue_saved: float = 0.0
@@ -114,7 +149,7 @@ class BusinessMetricsTracker:
                 f"saved=${traditional_loss - revenue_loss:.2f}"
             )
     
-    def get_metrics(self) -> dict:
+    def get_metrics(self) -> Dict[str, Any]:
         """Get current cumulative metrics"""
         with self._lock:
             auto_heal_rate = (
@@ -127,15 +162,16 @@ class BusinessMetricsTracker:
                 if self.detection_times else 120.0
             )
             
+            # Ensure all values are properly typed
             return {
                 "total_incidents": self.total_incidents,
                 "incidents_auto_healed": self.incidents_auto_healed,
-                "auto_heal_rate": auto_heal_rate,
-                "total_revenue_saved": self.total_revenue_saved,
-                "total_revenue_at_risk": self.total_revenue_at_risk,
-                "avg_detection_time_seconds": avg_detection_time,
-                "avg_detection_time_minutes": avg_detection_time / 60,
-                "time_improvement": (
+                "auto_heal_rate": float(auto_heal_rate),
+                "total_revenue_saved": float(self.total_revenue_saved),
+                "total_revenue_at_risk": float(self.total_revenue_at_risk),
+                "avg_detection_time_seconds": float(avg_detection_time),
+                "avg_detection_time_minutes": float(avg_detection_time / 60),
+                "time_improvement": float(
                     (14 - (avg_detection_time / 60)) / 14 * 100
                 )  # vs industry 14 min
             }
@@ -149,3 +185,33 @@ class BusinessMetricsTracker:
             self.total_revenue_at_risk = 0.0
             self.detection_times = []
             logger.info("Reset BusinessMetricsTracker")
+    
+    def export_for_dashboard(self) -> Dict[str, Any]:
+        """Export metrics formatted for dashboard display"""
+        metrics = self.get_metrics()
+        
+        return {
+            "incidents": {
+                "total": metrics["total_incidents"],
+                "auto_healed": metrics["incidents_auto_healed"],
+                "auto_heal_rate": f"{metrics['auto_heal_rate']:.1f}%"
+            },
+            "financial": {
+                "revenue_saved": f"${metrics['total_revenue_saved']:,.2f}",
+                "revenue_at_risk": f"${metrics['total_revenue_at_risk']:,.2f}",
+                "roi_percentage": self._calculate_roi()
+            },
+            "performance": {
+                "avg_response_time": f"{metrics['avg_detection_time_minutes']:.1f} min",
+                "time_improvement": f"{metrics['time_improvement']:.1f}%",
+                "vs_industry_standard": "14 min"
+            }
+        }
+    
+    def _calculate_roi(self) -> float:
+        """Calculate ROI percentage"""
+        # Simplified ROI calculation
+        if self.total_revenue_at_risk > 0:
+            roi = (self.total_revenue_saved / self.total_revenue_at_risk) * 100
+            return float(roi)
+        return 0.0
