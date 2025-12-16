@@ -129,7 +129,7 @@ class EnhancedFAISSIndex:
                 if idx == -1:  # FAISS returns -1 for no match
                     continue
                 
-                # Get text from FAISS storage
+                # Get text by FAISS index
                 text = self._get_text_by_index(int(idx))
                 
                 if text:
@@ -142,7 +142,7 @@ class EnhancedFAISSIndex:
                     })
             
             # Sort by similarity (highest first)
-            results.sort(key=lambda x: float(x.get("similarity", 0.0)), reverse=True)
+            results.sort(key=lambda x: float(x["similarity"]), reverse=True)
             
             logger.info(
                 f"Semantic search for '{query_text[:50]}...' "
@@ -164,15 +164,16 @@ class EnhancedFAISSIndex:
                 loop = asyncio.get_event_loop()
                 from sentence_transformers import SentenceTransformer
                 model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
+                # Note: This might need adjustment based on actual implementation
                 embedding = loop.run_until_complete(
                     loop.run_in_executor(
-                        self.faiss._encoder_pool,
-                        model.encode,
-                        [text]
+                        None,  # Use default executor
+                        lambda: model.encode([text])
                     )
                 )
                 return np.array(embedding, dtype=np.float32)
-        except Exception:
+        except Exception as e:
+            logger.debug(f"Could not use embedding model: {e}")
             pass
         
         # Fallback: create simple embedding from text hash
@@ -198,9 +199,9 @@ class EnhancedFAISSIndex:
     def get_embeddings(self) -> NDArray[np.float32]:
         """
         Get all embeddings stored in the index.
-    
+        
         Returns:
-        numpy.ndarray: Array of all embeddings
+            numpy.ndarray: Array of all embeddings
         """
         try:
             # Check if the underlying FAISS index has a way to retrieve vectors
@@ -208,21 +209,6 @@ class EnhancedFAISSIndex:
                 total = self.faiss.get_count()
                 if total == 0:
                     return np.array([], dtype=np.float32).reshape(0, MemoryConstants.VECTOR_DIM)
-            
-                # Reconstruct all vectors
-                vectors = []
-                for i in range(total):
-                    vec = self.faiss.index.reconstruct(i)
-                    vectors.append(vec)
-                return np.array(vectors, dtype=np.float32)
-            else:
-                # If reconstruction is not available, return empty array
-                logger.warning("FAISS index does not support reconstruct_n, returning empty array")
-                return np.array([], dtype=np.float32).reshape(0, MemoryConstants.VECTOR_DIM)
-                
-    except Exception as e:
-        logger.error(f"Error getting embeddings: {e}")
-        return np.array([], dtype=np.float32).reshape(0, MemoryConstants.VECTOR_DIM)
                 
                 # Reconstruct all vectors
                 vectors = []
