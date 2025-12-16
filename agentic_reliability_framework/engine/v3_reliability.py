@@ -12,9 +12,13 @@ from contextlib import asynccontextmanager
 import numpy as np
 
 from ..memory.rag_graph import RAGGraphMemory
-# FIX: Import with clearer naming
-from .reliability import V3ReliabilityEngine as BaseV3Engine
-from .reliability import HealingAction, MCPResponse
+# FIX: Import with clearer naming and include DEFAULT_LEARNING_MIN_DATA_POINTS
+from .reliability import (
+    V3ReliabilityEngine as BaseV3Engine,
+    HealingAction, 
+    MCPResponse,
+    DEFAULT_LEARNING_MIN_DATA_POINTS  # ADDED: Import the constant
+)
 from .mcp_server import MCPServer
 from ..config import config
 from ..models import ReliabilityEvent
@@ -497,6 +501,7 @@ class V3ReliabilityEngine(BaseV3Engine):
                 self.learning_state["failed_predictions"]
             )
             
+            # FIXED: Now using imported DEFAULT_LEARNING_MIN_DATA_POINTS
             learning_min_data_points = getattr(config, 'learning_min_data_points', DEFAULT_LEARNING_MIN_DATA_POINTS)
             if total_predictions % learning_min_data_points == 0:
                 self._extract_learning_patterns(context)
