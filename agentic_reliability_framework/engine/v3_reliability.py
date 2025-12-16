@@ -6,7 +6,7 @@ Pythonic implementation with proper typing, error handling, and safety features.
 import logging
 import time
 import threading
-from typing import Dict, Any, List, Optional, cast
+from typing import Dict, Any, List, Optional
 from contextlib import asynccontextmanager
 
 import numpy as np
