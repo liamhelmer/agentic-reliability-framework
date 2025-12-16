@@ -57,7 +57,7 @@ _engine_instance: Optional['ReliabilityEngineProtocol'] = None
 
 # ========== TYPE-SAFE LOADER FUNCTIONS ==========
 def _load_faiss_index_safe() -> Optional[Any]:
-    """Load FAISS index with safe error handling - ADD THIS FUNCTION"""
+    """Load FAISS index with safe error handling"""
     with suppress(ImportError, Exception):
         # Import here to avoid circular dependencies
         from .memory.faiss_index import create_faiss_index
@@ -143,10 +143,33 @@ def _load_engine() -> Optional['ReliabilityEngineProtocol']:
     return None
 
 
+def get_agents() -> Optional[Any]:
+    """Get or create agent orchestrator"""
+    try:
+        # Try to load agents from app module
+        from .app import OrchestrationManager
+        return OrchestrationManager()
+    except ImportError:
+        logger.warning("OrchestrationManager not available")
+        return None
+
+
+def get_business_metrics() -> Optional[Any]:
+    """Get or create business metrics tracker"""
+    try:
+        from .engine.business import BusinessMetricsTracker
+        return BusinessMetricsTracker()
+    except ImportError:
+        logger.warning("BusinessMetricsTracker not available")
+        return None
+
+
 # ========== CREATE LAZY LOADERS ==========
 rag_graph_loader: LazyLoader[Optional['RAGGraphMemory']] = LazyLoader(_load_rag_graph)
 mcp_server_loader: LazyLoader[Optional['MCPServer']] = LazyLoader(_load_mcp_server)
 engine_loader: LazyLoader[Optional['ReliabilityEngineProtocol']] = LazyLoader(_load_engine)
+agents_loader: LazyLoader[Optional[Any]] = LazyLoader(get_agents)
+business_metrics_loader: LazyLoader[Optional[Any]] = LazyLoader(get_business_metrics)
 
 
 # ========== PUBLIC API ==========
@@ -190,6 +213,11 @@ def get_faiss_index() -> Optional[Any]:
     return _load_faiss_index_safe()
 
 
+def enhanced_engine() -> Optional['ReliabilityEngineProtocol']:
+    """Get enhanced reliability engine (alias for get_engine)"""
+    return get_engine()
+
+
 def get_v3_status() -> Dict[str, Any]:
     """Get v3 feature status"""
     from .config import config
@@ -200,6 +228,8 @@ def get_v3_status() -> Dict[str, Any]:
         "mcp_available": mcp_server_loader.is_loaded,
         "mcp_instance_type": type(_mcp_server_instance).__name__ if _mcp_server_instance else "None",
         "engine_available": engine_loader.is_loaded,
+        "agents_available": agents_loader.is_loaded,
+        "business_metrics_available": business_metrics_loader.is_loaded,
         "rag_enabled": config.rag_enabled,
         "mcp_enabled": config.mcp_enabled,
         "learning_enabled": config.learning_enabled,
@@ -240,6 +270,8 @@ def reset_all_instances() -> None:
     rag_graph_loader.reset()
     mcp_server_loader.reset()
     engine_loader.reset()
+    agents_loader.reset()
+    business_metrics_loader.reset()
     
     _rag_graph_instance = None
     _mcp_server_instance = None
