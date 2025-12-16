@@ -12,17 +12,18 @@ from contextlib import asynccontextmanager
 import numpy as np
 
 from ..memory.rag_graph import RAGGraphMemory
-from .reliability import V3ReliabilityEngine as V2Engine
-from .reliability import HealingAction, MCPResponse  # Import from parent module
+# FIX: Import with clearer naming
+from .reliability import V3ReliabilityEngine as BaseV3Engine
+from .reliability import HealingAction, MCPResponse
 from .mcp_server import MCPServer
 from ..config import config
 from ..models import ReliabilityEvent
-from .interfaces import RAGProtocol, MCPProtocol  # Remove ReliabilityEngineProtocol
+from .interfaces import RAGProtocol, MCPProtocol
 
 logger = logging.getLogger(__name__)
 
 
-class V3ReliabilityEngine(V2Engine):
+class V3ReliabilityEngine(BaseV3Engine):
     """
     Enhanced reliability engine with RAG Graph memory and MCP execution boundary.
     
@@ -37,9 +38,10 @@ class V3ReliabilityEngine(V2Engine):
     
     def __init__(
         self,
-        rag_graph: RAGGraphMemory,
-        mcp_server: MCPServer,
-        *args: Any,
+        # FIX: Match parent signature - make parameters optional like parent
+        rag_graph: Optional[RAGGraphMemory] = None,  # Changed from required to optional
+        mcp_server: Optional[MCPServer] = None,      # Changed from required to optional
+        *args: Any,  # Keep but won't pass to parent
         **kwargs: Any
     ) -> None:
         """
@@ -49,9 +51,16 @@ class V3ReliabilityEngine(V2Engine):
             rag_graph: RAG Graph memory for historical incident retrieval
             mcp_server: MCP Server for governed execution boundary
         """
-        super().__init__(rag_graph=rag_graph, mcp_server=mcp_server, *args, **kwargs)
-        self.rag = rag_graph
-        self.mcp = mcp_server
+        # FIX: Parent only expects rag_graph and mcp_server, not *args or **kwargs
+        # Call parent with only the expected parameters
+        super().__init__(
+            rag_graph=rag_graph, 
+            mcp_server=mcp_server
+        )
+        
+        # Override with our instances if provided
+        # (Parent already set self.rag and self.mcp, but we might want
+        #  to ensure they're the right types or add validation)
         
         # V3-specific state
         self._v3_lock = threading.RLock()
@@ -74,23 +83,29 @@ class V3ReliabilityEngine(V2Engine):
             "last_learning_update": time.time(),
         }
         
+        # FIX: Check mcp_server mode safely
+        mcp_mode = "unknown"
+        if mcp_server and hasattr(mcp_server, 'mode') and hasattr(mcp_server.mode, 'value'):
+            mcp_mode = mcp_server.mode.value
+        
         logger.info(
-            f"Initialized V3ReliabilityEngine with RAG and MCP "
-            f"(mode={mcp_server.mode.value})"
+            f"Initialized Enhanced V3ReliabilityEngine with RAG and MCP "
+            f"(mode={mcp_mode})"
         )
     
     @property
     def v3_enabled(self) -> bool:
         """Check if v3 features should be used"""
-        if not config.rag_enabled or not config.mcp_enabled:
+        if not getattr(config, 'rag_enabled', False) or not getattr(config, 'mcp_enabled', False):
             return False
         
         # Check rollout percentage if configured
-        if config.rollout_percentage < 100:
+        rollout_percentage = getattr(config, 'rollout_percentage', 100)
+        if rollout_percentage < 100:
             # Simple hash-based rollout
             import random
             random.seed(int(time.time()))
-            return random.random() * 100 < config.rollout_percentage
+            return random.random() * 100 < rollout_percentage
         
         return True
     
@@ -133,7 +148,8 @@ class V3ReliabilityEngine(V2Engine):
         Returns:
             Enhanced results with v3 features
         """
-        # 1. Original v2 analysis
+        # 1. Original v2 analysis - call parent's method
+        # Note: Parent has process_event_enhanced method
         result = await super().process_event_enhanced(*args, **kwargs)
         
         # Skip v3 processing if not enabled or not an anomaly
@@ -279,8 +295,8 @@ class V3ReliabilityEngine(V2Engine):
     
     def _get_most_effective_action(
         self, 
-        incidents: List[Any],  # Match parent parameter name
-        component: Optional[str] = None  # Make optional to match parent
+        incidents: List[Any],
+        component: Optional[str] = None
     ) -> Optional[Dict[str, Any]]:
         """Get most effective action from similar incidents"""
         if not incidents or not self.rag:
@@ -292,7 +308,7 @@ class V3ReliabilityEngine(V2Engine):
                 effective_actions = self.rag.get_most_effective_actions(component, k=1)
                 return effective_actions[0] if effective_actions else None
             
-            # Fall back to parent logic
+            # Fall back to parent logic (inherited from BaseV3Engine)
             return super()._get_most_effective_action(incidents, component)
             
         except Exception as e:
@@ -355,10 +371,10 @@ class V3ReliabilityEngine(V2Engine):
     
     def _create_mcp_request(
         self, 
-        action: Union[Dict[str, Any], HealingAction],  # Match parent type
+        action: Union[Dict[str, Any], HealingAction],
         event: ReliabilityEvent,
-        historical_context: List[Any],  # Match parent parameter name
-        rag_context: Optional[Dict[str, Any]] = None  # Make optional to match parent
+        historical_context: List[Any],
+        rag_context: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """Create MCP request from enhanced action"""
         # Build justification with historical context
@@ -399,7 +415,7 @@ class V3ReliabilityEngine(V2Engine):
             "justification": justification,
             "metadata": {
                 "event_fingerprint": event.fingerprint,
-                "event_severity": event.severity.value,
+                "event_severity": event.severity.value if hasattr(event.severity, 'value') else "unknown",
                 "similar_incidents_count": len(historical_context),
                 "historical_confidence": rag_context.get("avg_similarity", 0.0) if rag_context else 0.0,
                 "rag_context": rag_context,
@@ -410,8 +426,8 @@ class V3ReliabilityEngine(V2Engine):
     async def _record_outcome(
         self, 
         incident_id: str, 
-        action: Union[Dict[str, Any], HealingAction],  # Match parent type
-        mcp_response: Union[MCPResponse, Dict[str, Any]],  # Match parent type
+        action: Union[Dict[str, Any], HealingAction],
+        mcp_response: Union[MCPResponse, Dict[str, Any]],
         event: Optional[ReliabilityEvent] = None,
         similar_incidents: Optional[List[Any]] = None
     ) -> Dict[str, Any]:
@@ -481,11 +497,11 @@ class V3ReliabilityEngine(V2Engine):
                 self.learning_state["failed_predictions"]
             )
             
-            if hasattr(config, 'learning_min_data_points'):
-                if total_predictions % config.learning_min_data_points == 0:
-                    self._extract_learning_patterns(context)
-                    self.learning_state["total_learned_patterns"] += 1
-                    self.v3_metrics["learning_updates"] += 1
+            learning_min_data_points = getattr(config, 'learning_min_data_points', DEFAULT_LEARNING_MIN_DATA_POINTS)
+            if total_predictions % learning_min_data_points == 0:
+                self._extract_learning_patterns(context)
+                self.learning_state["total_learned_patterns"] += 1
+                self.v3_metrics["learning_updates"] += 1
     
     def _extract_learning_patterns(self, context: Dict[str, Any]) -> None:
         """Extract learning patterns from context"""
@@ -539,7 +555,7 @@ class V3ReliabilityEngine(V2Engine):
     
     def shutdown(self) -> None:
         """Graceful shutdown of v3 engine"""
-        logger.info("Shutting down V3ReliabilityEngine...")
+        logger.info("Shutting down Enhanced V3ReliabilityEngine...")
         
         # Save any pending learning data
         if getattr(config, 'learning_enabled', False):
@@ -548,7 +564,7 @@ class V3ReliabilityEngine(V2Engine):
         # Call parent shutdown
         super().shutdown() if hasattr(super(), 'shutdown') else None
         
-        logger.info("V3ReliabilityEngine shutdown complete")
+        logger.info("Enhanced V3ReliabilityEngine shutdown complete")
 
 
 # Factory function for backward compatibility
@@ -571,27 +587,37 @@ def create_v3_engine(
         from ..lazy import get_rag_graph, get_mcp_server
         
         if rag_graph is None:
-            rag_graph = get_rag_graph()
+            rag_graph_instance = get_rag_graph()
+        else:
+            rag_graph_instance = rag_graph
         
         if mcp_server is None:
-            mcp_server = get_mcp_server()
+            mcp_server_instance = get_mcp_server()
+        else:
+            mcp_server_instance = mcp_server
         
         # Check if we have all required dependencies
-        if not rag_graph or not mcp_server:
+        if not rag_graph_instance or not mcp_server_instance:
             logger.warning("Cannot create V3 engine: missing dependencies")
             return None
         
-        # Check types
-        if not isinstance(rag_graph, RAGGraphMemory):
-            logger.warning(f"RAG graph must be instance of RAGGraphMemory, got {type(rag_graph)}")
+        # Check types - use isinstance with proper imports
+        from ..memory.rag_graph import RAGGraphMemory
+        from .mcp_server import MCPServer
+        
+        if not isinstance(rag_graph_instance, RAGGraphMemory):
+            logger.warning(f"RAG graph must be instance of RAGGraphMemory, got {type(rag_graph_instance)}")
             return None
             
-        if not isinstance(mcp_server, MCPServer):
-            logger.warning(f"MCP server must be instance of MCPServer, got {type(mcp_server)}")
+        if not isinstance(mcp_server_instance, MCPServer):
+            logger.warning(f"MCP server must be instance of MCPServer, got {type(mcp_server_instance)}")
             return None
         
-        # Use the instances directly (no cast needed)
-        return V3ReliabilityEngine(rag_graph=rag_graph, mcp_server=mcp_server)
+        # Create engine with instances
+        return V3ReliabilityEngine(
+            rag_graph=rag_graph_instance, 
+            mcp_server=mcp_server_instance
+        )
         
     except ImportError as e:
         logger.error(f"Error creating V3 engine: {e}")
