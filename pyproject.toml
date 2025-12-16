@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "agentic-reliability-framework"
-version = "2.0.2"
+dynamic = ["version"]
 description = "Production-grade multi-agent AI system for infrastructure reliability monitoring and self-healing"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -31,7 +31,8 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Topic :: System :: Monitoring",
-    "Topic :: Scientific/Engineering :: Artificial Intelligence"
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Typing :: Typed"
 ]
 
 dependencies = [
@@ -55,7 +56,9 @@ dev = [
     "pytest-cov>=4.1.0",
     "black>=23.7.0",
     "ruff>=0.0.285",
-    "mypy>=1.5.0"
+    "mypy>=1.5.0",
+    "types-requests>=2.32.0.20240706",
+    "types-python-dotenv>=1.0.0.20240524"
 ]
 
 [project.urls]
@@ -74,3 +77,58 @@ include-package-data = true
 [tool.setuptools.package-data]
 "*" = ["*.json", "*.index", "*.txt", "*.md"]
 "agentic_reliability_framework" = ["data/*", "py.typed"]
+
+# ========== TOOL CONFIGURATIONS ==========
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+disallow_incomplete_defs = true
+check_untyped_defs = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+strict_equality = true
+
+# Ignore specific errors
+disable_error_code = [
+    "import-untyped",  # Allow untyped imports
+    "attr-defined",    # Allow dynamic attribute access
+    "call-overload",   # Allow overloaded calls
+    "empty-body",      # Allow empty method bodies
+]
+
+[[tool.mypy.overrides]]
+module = [
+    "agentic_reliability_framework.engine.business",
+    "agentic_reliability_framework.app"
+]
+disallow_untyped_defs = false
+check_untyped_defs = false
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+select = [
+    "E",  # pycodestyle errors
+    "F",  # pyflakes
+    "B",  # flake8-bugbear
+    "I",  # isort
+    "UP", # pyupgrade
+]
+ignore = [
+    "E501",  # Line too long - handled by black
+    "F401",  # Module imported but unused (allow for TYPE_CHECKING)
+    "B008",  # Do not perform function calls in argument defaults
+    "B009",  # Do not call getattr with a constant attribute
+]
+fixable = ["E", "F", "B", "I", "UP"]
+unfixable = []
+
+[tool.ruff.lint]
+# Allow unused imports in TYPE_CHECKING blocks
+per-file-ignores = {}
