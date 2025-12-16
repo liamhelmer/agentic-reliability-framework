@@ -5,7 +5,7 @@ Adds search capability to existing ProductionFAISSIndex
 
 import numpy as np
 import logging
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Optional, Tuple, Union
 import asyncio
 from numpy.typing import NDArray
 
@@ -33,7 +33,11 @@ class EnhancedFAISSIndex:
         self._lock = faiss_index._lock if hasattr(faiss_index, '_lock') else None
         logger.info("Initialized EnhancedFAISSIndex for v3 RAG search")
     
-    def search(self, query_vector: NDArray[np.float32], k: int = 5) -> Tuple[NDArray[np.float32], NDArray[np.int64]]:
+    def search(
+        self, 
+        query_vector: Union[NDArray[np.float32], List[float], np.ndarray], 
+        k: int = 5
+    ) -> Tuple[NDArray[np.float32], NDArray[np.int64]]:
         """
         Thread-safe similarity search in FAISS index
         
@@ -56,17 +60,27 @@ class EnhancedFAISSIndex:
         else:
             return self._safe_search(query_vector, k)
     
-    def _safe_search(self, query_vector: NDArray[np.float32], k: int) -> Tuple[NDArray[np.float32], NDArray[np.int64]]:
+    def _safe_search(
+        self, 
+        query_vector: Union[NDArray[np.float32], List[float], np.ndarray], 
+        k: int
+    ) -> Tuple[NDArray[np.float32], NDArray[np.int64]]:
         """Perform search with error handling"""
         try:
+            # Convert to numpy array if needed
+            if not isinstance(query_vector, np.ndarray):
+                query_vector_array = np.array(query_vector, dtype=np.float32)
+            else:
+                query_vector_array = query_vector.astype(np.float32)
+            
             # Ensure proper dimensionality
-            if len(query_vector.shape) == 1:
-                query_vector = query_vector.reshape(1, -1)
+            if len(query_vector_array.shape) == 1:
+                query_vector_array = query_vector_array.reshape(1, -1)
             
             # Validate dimensions
-            if query_vector.shape[1] != MemoryConstants.VECTOR_DIM:
+            if query_vector_array.shape[1] != MemoryConstants.VECTOR_DIM:
                 raise ValueError(
-                    f"Query vector dimension {query_vector.shape[1]} "
+                    f"Query vector dimension {query_vector_array.shape[1]} "
                     f"does not match index dimension {MemoryConstants.VECTOR_DIM}"
                 )
             
@@ -79,21 +93,34 @@ class EnhancedFAISSIndex:
                 return np.array([], dtype=np.float32), np.array([], dtype=np.int64)
             
             # Perform search
-            distances, indices = self.faiss.index.search(query_vector, actual_k)
+            distances, indices = self.faiss.index.search(query_vector_array, actual_k)
+            
+            # Ensure we have valid arrays
+            if distances.size > 0 and indices.size > 0:
+                # Extract first row if we have a 2D array
+                dist_result = distances[0].astype(np.float32) 
+                idx_result = indices[0].astype(np.int64)
+            else:
+                dist_result = np.array([], dtype=np.float32)
+                idx_result = np.array([], dtype=np.int64)
             
             logger.debug(
                 f"FAISS search completed: k={actual_k}, "
-                f"found={len(indices[0])} results, "
-                f"min_distance={np.min(distances[0]) if len(distances[0]) > 0 else 0:.4f}"
+                f"found={len(idx_result)} results, "
+                f"min_distance={np.min(dist_result).item() if len(dist_result) > 0 else 0:.4f}"
             )
             
-            return distances[0].astype(np.float32), indices[0].astype(np.int64)
+            return dist_result, idx_result
             
         except Exception as e:
             logger.error(f"FAISS search error: {e}", exc_info=True)
             raise RuntimeError(f"Search failed: {str(e)}")
     
-    async def search_async(self, query_vector: NDArray[np.float32], k: int = 5) -> Tuple[NDArray[np.float32], NDArray[np.int64]]:
+    async def search_async(
+        self, 
+        query_vector: Union[NDArray[np.float32], List[float], np.ndarray], 
+        k: int = 5
+    ) -> Tuple[NDArray[np.float32], NDArray[np.int64]]:
         """
         Async version of similarity search
         
@@ -133,10 +160,14 @@ class EnhancedFAISSIndex:
                 text = self._get_text_by_index(int(idx))
                 
                 if text:
+                    # FIX FOR LINE 145: Use .item() to safely convert numpy types to Python float
+                    distance_float = float(distance.item()) if hasattr(distance, 'item') else float(distance)
+                    similarity_float = float(1.0 / (1.0 + distance_float))
+                    
                     results.append({
                         "index": int(idx),
-                        "distance": float(distance),
-                        "similarity": float(1.0 / (1.0 + distance)),  # Convert distance to similarity
+                        "distance": distance_float,
+                        "similarity": similarity_float,  # Convert distance to similarity
                         "text": text,
                         "rank": i + 1
                     })
@@ -253,3 +284,38 @@ class EnhancedFAISSIndex:
             stats["faiss_dimension"] = self.faiss.index.d
         
         return stats
+    
+    # FIX FOR LINE 191: Explicit return type to avoid "no-any-return" error
+    def search_vectors(self, query_vector: np.ndarray, k: int = 5) -> np.ndarray:
+        """
+        Search for similar vectors.
+        
+        Args:
+            query_vector: Query vector
+            k: Number of results to return
+            
+        Returns:
+            np.ndarray: Array of indices of similar vectors
+        """
+        try:
+            if not isinstance(query_vector, np.ndarray):
+                query_vector = np.array(query_vector, dtype=np.float32)
+            
+            if query_vector.ndim == 1:
+                query_vector = query_vector.reshape(1, -1)
+            
+            distances, indices = self.faiss.index.search(query_vector, min(k, self.faiss.index.ntotal))
+            
+            # Explicitly return int32 array to match declared return type
+            if indices.size > 0:
+                # Use .astype() for explicit type conversion
+                result = indices.astype(np.int32)
+                return result
+            else:
+                # Return empty array with explicit dtype
+                return np.array([], dtype=np.int32)
+                
+        except Exception as e:
+            logger.error(f"Error searching vectors: {e}")
+            # Consistent return type on error
+            return np.array([], dtype=np.int32)
