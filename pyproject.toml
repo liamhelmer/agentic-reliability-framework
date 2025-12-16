@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "agentic-reliability-framework"
-dynamic = ["version"]
+version = "2.0.2"
 description = "Production-grade multi-agent AI system for infrastructure reliability monitoring and self-healing"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -31,17 +31,21 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Topic :: System :: Monitoring",
-    "Topic :: Scientific/Engineering :: Artificial Intelligence",
-    "Typing :: Typed"
+    "Topic :: Scientific/Engineering :: Artificial Intelligence"
 ]
 
 dependencies = [
+    # UI Framework
     "gradio>=5.0.0,<6.0.0",
+    
+    # Core Data & ML
     "numpy>=1.24.0,<2.0.0",
     "pandas>=2.0.0,<3.0.0",
     "pydantic>=2.0.0,<3.0.0",
     "sentence-transformers>=2.2.0",
     "faiss-cpu>=1.7.4",
+    
+    # Networking & Utilities
     "requests>=2.32.5",
     "circuitbreaker>=1.4.0",
     "atomicwrites>=1.4.1",
@@ -51,14 +55,18 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
+    # Testing
     "pytest>=7.4.0",
     "pytest-asyncio>=0.21.0",
     "pytest-cov>=4.1.0",
+    
+    # Formatting & Linting
     "black>=23.7.0",
     "ruff>=0.0.285",
     "mypy>=1.5.0",
-    "types-requests>=2.32.0.20240706",
-    "types-python-dotenv>=1.0.0",  
+    
+    # Type stubs (only for complex libraries)
+    "types-requests>=2.32.0",
 ]
 
 [project.urls]
@@ -78,7 +86,33 @@ include-package-data = true
 "*" = ["*.json", "*.index", "*.txt", "*.md"]
 "agentic_reliability_framework" = ["data/*", "py.typed"]
 
-# ========== TOOL CONFIGURATIONS ==========
+[tool.black]
+line-length = 100
+target-version = ['py310']
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # Pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+]
+ignore = [
+    "E501",  # line too long (handled by black)
+    "W503",  # line break before operator (black compatible)
+    "F401",  # module imported but unused (allow for TYPE_CHECKING)
+]
+extend-exclude = [
+    "__pycache__",
+    ".git",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".ruff_cache",
+]
 
 [tool.mypy]
 python_version = "3.10"
@@ -94,14 +128,14 @@ warn_no_return = true
 warn_unreachable = true
 strict_equality = true
 
-# Ignore specific errors
+# Allow TYPE_CHECKING imports
 disable_error_code = [
-    "import-untyped",  # Allow untyped imports
-    "attr-defined",    # Allow dynamic attribute access
-    "call-overload",   # Allow overloaded calls
-    "empty-body",      # Allow empty method bodies
+    "import-untyped",
+    "attr-defined",
+    "empty-body",
 ]
 
+# Configuration for specific modules
 [[tool.mypy.overrides]]
 module = [
     "agentic_reliability_framework.engine.business",
@@ -109,26 +143,3 @@ module = [
 ]
 disallow_untyped_defs = false
 check_untyped_defs = false
-
-[tool.ruff]
-target-version = "py310"
-line-length = 100
-select = [
-    "E",  # pycodestyle errors
-    "F",  # pyflakes
-    "B",  # flake8-bugbear
-    "I",  # isort
-    "UP", # pyupgrade
-]
-ignore = [
-    "E501",  # Line too long - handled by black
-    "F401",  # Module imported but unused (allow for TYPE_CHECKING)
-    "B008",  # Do not perform function calls in argument defaults
-    "B009",  # Do not call getattr with a constant attribute
-]
-fixable = ["E", "F", "B", "I", "UP"]
-unfixable = []
-
-[tool.ruff.lint]
-# Allow unused imports in TYPE_CHECKING blocks
-per-file-ignores = {}
