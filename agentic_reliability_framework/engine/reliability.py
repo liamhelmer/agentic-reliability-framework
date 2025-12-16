@@ -3,7 +3,7 @@ import asyncio
 import logging
 import threading
 import time
-from typing import List, Dict, Any, Optional, Union, cast
+from typing import List, Dict, Any, Optional, Union
 from dataclasses import dataclass
 
 from agentic_reliability_framework.memory.rag_graph import RAGGraphMemory
@@ -113,6 +113,7 @@ class V3ReliabilityEngine:
             
         except Exception as e:
             logger.error(f"Error in v2 processing: {e}", exc_info=True)
+            # Return a valid dict, not None
             return {
                 "status": "ERROR",
                 "incident_id": "",
@@ -167,7 +168,7 @@ class V3ReliabilityEngine:
             })
         
         # Sort by confidence
-        actions.sort(key=lambda x: float(x.get("confidence", 0.0)), reverse=True)  # Explicit float conversion
+        actions.sort(key=lambda x: float(x.get("confidence", 0.0)), reverse=True)
         return actions
 
     def _calculate_outcome_stats(self, incidents: List[Any]) -> Dict[str, Any]:
@@ -210,9 +211,9 @@ class V3ReliabilityEngine:
             
             # Calculate most effective action
             most_effective_action = None
+            action_success_rates: Dict[str, float] = {}
             if action_successes:
                 # Calculate success rates
-                action_success_rates: Dict[str, float] = {}
                 for action, success_count in action_successes.items():
                     total_count = action_counts.get(action, 0)
                     if total_count > 0:
@@ -227,7 +228,7 @@ class V3ReliabilityEngine:
                 "avg_resolution_time": float(total_resolution_time) / total_incidents if total_incidents > 0 else 0.0,
                 "most_common_action": most_common_action,
                 "most_effective_action": most_effective_action,
-                "action_success_rates": action_success_rates if 'action_success_rates' in locals() else {},
+                "action_success_rates": action_success_rates,
             }
             
         except Exception as e:
@@ -245,7 +246,7 @@ class V3ReliabilityEngine:
         action: Union[Dict[str, Any], HealingAction], 
         event: ReliabilityEvent,
         historical_context: List[Any],
-        rag_context: Optional[Dict[str, Any]] = None  # Add optional parameter for compatibility
+        rag_context: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """Create MCP request from action"""
         # Handle both dict and HealingAction types
@@ -290,7 +291,7 @@ class V3ReliabilityEngine:
         incident_id: str, 
         action: Union[Dict[str, Any], HealingAction], 
         mcp_response: Union[MCPResponse, Dict[str, Any]],
-        event: Optional[ReliabilityEvent] = None,  # Add optional parameters
+        event: Optional[ReliabilityEvent] = None,
         similar_incidents: Optional[List[Any]] = None
     ) -> Dict[str, Any]:
         """Record outcome of MCP execution"""
@@ -353,7 +354,7 @@ class V3ReliabilityEngine:
     def _get_most_effective_action(
         self, 
         incidents: List[Any],
-        component: Optional[str] = None  # Add optional parameter for compatibility
+        component: Optional[str] = None
     ) -> Optional[Dict[str, Any]]:
         """Return most effective past action from incidents"""
         if not incidents:
