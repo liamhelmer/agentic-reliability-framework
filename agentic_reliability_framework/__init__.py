@@ -3,9 +3,10 @@ Agentic Reliability Framework (ARF)
 Production-grade multi-agent AI for reliability monitoring
 """
 
+from importlib import import_module
 from typing import Any, TYPE_CHECKING
 
-from .__version__ import __version__  # runtime: provide package version
+from .__version__ import __version__  # runtime import for __version__
 
 __all__ = [
     "__version__",
@@ -21,11 +22,10 @@ __all__ = [
     "enhanced_engine",
 ]
 
-# --- For static analyzers only: declare the names so mypy/ruff see them. ---
-# We intentionally *do not* import concrete implementations here because
-# runtime imports are lazy (PEP 562) via __getattr__ below.
-# Mark these as Any to avoid hard coupling to module layout during static checks.
-if TYPE_CHECKING:  # pragma: no cover
+# Inform static analyzers/types about the exported names without importing modules.
+# We intentionally *don't* import real symbols here (no `from .app import ...`) so we
+# preserve lazy runtime imports and avoid mypy trying to resolve attributes on modules.
+if TYPE_CHECKING:  # pragma: no cover - static-analysis only
     EnhancedReliabilityEngine: Any
     SimplePredictiveEngine: Any
     BusinessImpactCalculator: Any
@@ -37,55 +37,45 @@ if TYPE_CHECKING:  # pragma: no cover
     get_business_metrics: Any
     enhanced_engine: Any
 
-# --- Lazy runtime imports (PEP 562) ---
-def __getattr__(name: str):
-    # Classes / functions from app.py
-    if name == "EnhancedReliabilityEngine":
-        from .app import EnhancedReliabilityEngine  # local import
-        return EnhancedReliabilityEngine
-    if name == "SimplePredictiveEngine":
-        from .app import SimplePredictiveEngine
-        return SimplePredictiveEngine
-    if name == "BusinessImpactCalculator":
-        from .app import BusinessImpactCalculator
-        return BusinessImpactCalculator
-    if name == "AdvancedAnomalyDetector":
-        from .app import AdvancedAnomalyDetector
-        return AdvancedAnomalyDetector
-    if name == "create_enhanced_ui":
-        from .app import create_enhanced_ui
-        return create_enhanced_ui
 
-    # Items implemented in lazy.py
-    if name in {
-        "get_engine",
-        "get_agents",
-        "get_faiss_index",
-        "get_business_metrics",
-        "enhanced_engine",
-    }:
-        from .lazy import (
-            enhanced_engine,
-            get_agents,
-            get_engine,
-            get_faiss_index,
-            get_business_metrics,
-        )
+def __getattr__(name: str) -> Any:
+    """
+    Lazy-load heavy modules on attribute access using importlib + getattr.
+    This avoids importing heavy modules at package import time and prevents
+    static analyzers from trying to resolve attributes of other modules.
+    """
+    map_module_attr: dict[str, tuple[str, str]] = {
+        # from .app
+        "EnhancedReliabilityEngine": (".app", "EnhancedReliabilityEngine"),
+        "SimplePredictiveEngine": (".app", "SimplePredictiveEngine"),
+        "BusinessImpactCalculator": (".app", "BusinessImpactCalculator"),
+        "AdvancedAnomalyDetector": (".app", "AdvancedAnomalyDetector"),
+        "create_enhanced_ui": (".app", "create_enhanced_ui"),
+        # from .lazy
+        "get_engine": (".lazy", "get_engine"),
+        "get_agents": (".lazy", "get_agents"),
+        "get_faiss_index": (".lazy", "get_faiss_index"),
+        "get_business_metrics": (".lazy", "get_business_metrics"),
+        "enhanced_engine": (".lazy", "enhanced_engine"),
+    }
 
-        if name == "get_engine":
-            return get_engine
-        if name == "get_agents":
-            return get_agents
-        if name == "get_faiss_index":
-            return get_faiss_index
-        if name == "get_business_metrics":
-            return get_business_metrics
-        if name == "enhanced_engine":
-            return enhanced_engine
+    entry = map_module_attr.get(name)
+    if entry is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    module_name, attr_name = entry
+    # importlib.import_module returns ModuleType; cast to Any to avoid attribute checks
+    module: Any = import_module(module_name, package=__package__)
+    try:
+        return getattr(module, attr_name)
+    except AttributeError as exc:
+        # Preserve a helpful message for runtime debugging
+        raise AttributeError(
+            f"module {module.__name__!r} has no attribute {attr_name!r}"
+        ) from exc
 
 
-def __dir__():
-    # Improve autocompletion: list module globals + public API names.
-    return sorted(set(list(globals().keys()) + list(__all__)))
+def __dir__() -> list[str]:
+    """Expose the declared public symbols for tab-completion and tooling."""
+    std = set(globals().keys())
+    return sorted(std.union(__all__))
