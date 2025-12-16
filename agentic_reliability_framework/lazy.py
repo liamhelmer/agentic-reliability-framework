@@ -3,15 +3,24 @@ Simple lazy loading for ARF - No circular dependencies!
 Pythonic improvements with type safety
 """
 
-import threading
 import logging
-from typing import Callable, Optional, Dict, Any, TypeVar, Generic, cast
+import threading
 from contextlib import suppress
+from typing import Callable, Optional, Dict, Any, TypeVar, Generic, cast, TYPE_CHECKING
 
 logger = logging.getLogger(__name__)
 
-T = TypeVar('T')
+# Import types for forward references (TYPE_CHECKING only)
+if TYPE_CHECKING:
+    from .memory.rag_graph import RAGGraphMemory
+    from .engine.mcp_server import MCPServer
+    from .engine.interfaces import ReliabilityEngineProtocol
+    from .app import OrchestrationManager
+    from .memory.faiss_index import ProductionFAISSIndex
+    from .engine.business import BusinessMetricsTracker
 
+# Rest of your file continues from here...
+T = TypeVar('T')
 
 class LazyLoader(Generic[T]):
     """Thread-safe lazy loader with better typing support"""
