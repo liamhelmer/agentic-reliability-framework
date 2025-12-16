@@ -1,6 +1,6 @@
 # Standard imports
 import threading
-from typing import Tuple, Optional
+from typing import Tuple, Optional, Any
 import numpy as np
 
 # FAISS import
@@ -29,13 +29,31 @@ class ProductionFAISSIndex:
         """Return the total number of vectors in the index."""
         with self._lock:
             # Access ntotal directly - it's already an integer
-            return self.index.ntotal
+            count = self.index.ntotal if hasattr(self.index, 'ntotal') else 0
+            return int(count)  # Explicit cast to int
 
-    def add_async(self, vector: np.ndarray) -> int:
+    def add_async(self, vector: np.ndarray, text_description: Optional[str] = None) -> int:
         """Async version of add (if needed for RAG graph compatibility)."""
         # Simply call the synchronous version for now
         # This maintains compatibility with rag_graph.py expectations
         return self.add(vector)
+
+    def add_text(self, text: str, vector: np.ndarray) -> int:
+        """Add text with vector to index (for compatibility)."""
+        with self._lock:
+            if len(vector.shape) == 1:
+                vector = vector.reshape(1, -1)
+            self.index.add(vector)
+            # Store text if we have storage
+            if not hasattr(self, 'texts'):
+                self.texts = []
+            self.texts.append(text)
+            return int(self.index.ntotal - 1)
+
+    def shutdown(self) -> None:
+        """Graceful shutdown."""
+        logger = logging.getLogger(__name__)
+        logger.info("FAISS index shutdown")
 
 
 class EnhancedFAISSIndex(ProductionFAISSIndex):
@@ -51,13 +69,18 @@ class EnhancedFAISSIndex(ProductionFAISSIndex):
 
 
 # Factory function for compatibility with lazy.py
-def create_faiss_index(dim: int) -> ProductionFAISSIndex:
+def create_faiss_index(dim: int = 384) -> ProductionFAISSIndex:
     """Create a new FAISS index instance.
     
     Args:
-        dim: Dimensionality of vectors
+        dim: Dimensionality of vectors (default: 384)
         
     Returns:
         ProductionFAISSIndex instance
     """
-    return ProductionFAISSIndex(dim)
+    return ProductionFAISSIndex(dim=dim)
+
+
+# Setup logging
+import logging
+logger = logging.getLogger(__name__)
