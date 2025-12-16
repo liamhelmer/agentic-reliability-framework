@@ -783,7 +783,7 @@ class RAGGraphMemory:
         else:
             resolution_std = 0.0
         
-        return cast(EffectivenessStats, {
+        return {
             "action": action,
             "total_uses": total,
             "successful_uses": successful,
@@ -792,7 +792,7 @@ class RAGGraphMemory:
             "resolution_time_std": resolution_std,
             "component_filter": component,
             "data_points": total
-        })
+        }
     
     def _serialize_node(self, node: Any) -> Dict[str, Any]:
         """
@@ -856,7 +856,7 @@ class RAGGraphMemory:
                         action_stats[action]["resolution_times"].append(outcome.resolution_time_minutes)
         
         # Calculate effectiveness metrics
-        effectiveness = []
+        effectiveness: List[Dict[str, Any]] = []
         min_data_points = getattr(config, 'learning_min_data_points', 5)  # Default 5
         
         for action, stats in action_stats.items():
@@ -886,7 +886,7 @@ class RAGGraphMemory:
         
         # Sort by success rate (descending), then by confidence (descending)
         effectiveness.sort(
-            key=lambda x: (x["success_rate"], x["confidence"]), 
+            key=lambda x: (float(x["success_rate"]), float(x["confidence"])), 
             reverse=True
         )
         
@@ -927,7 +927,8 @@ class RAGGraphMemory:
                 "failure_threshold": config.safety_guardrails.get("circuit_breaker", {}).get("failures", 5)
             }
             
-            return cast(GraphStats, {
+            # FIXED: Remove redundant cast, just return the dict directly
+            return {
                 "incident_nodes": incident_count,
                 "outcome_nodes": len(self.outcome_nodes),
                 "edges": len(self.edges),
@@ -947,7 +948,7 @@ class RAGGraphMemory:
                 "v3_enabled": config.rag_enabled,
                 "is_operational": self.is_enabled(),
                 "circuit_breaker": circuit_breaker_status
-            })
+            }
     
     def clear_cache(self) -> None:
         """Clear similarity and embedding caches"""
