@@ -131,124 +131,183 @@ class Constants:
 # === Configuration ===
 HEADERS = {"Authorization": f"Bearer {config.hf_api_key}"} if config.hf_api_key else {}
 
-# === Demo Scenarios for Hackathon Presentations ===
+# === Demo Scenarios for Killer Presentations ===
 DEMO_SCENARIOS = {
-    "🛍️ Black Friday Crisis": {
-        "description": "2:47 AM on Black Friday. Payment processing is failing. $50K/minute at risk.",
-        "component": "payment-service",
-        "latency": 450,
-        "error_rate": 0.22,
-        "throughput": 8500,
-        "cpu_util": 0.95,
-        "memory_util": 0.88,
+    "🏦 Finance - HFT Latency Spike": {
+        "component": "trading-engine",
+        "latency": 42.0,
+        "error_rate": 0.0001,
+        "throughput": 50000.0,
+        "cpu_util": 0.85,
+        "memory_util": 0.72,
+        "revenue_at_risk": 5000000,
         "story": """
-**SCENARIO: Black Friday Payment Crisis**
+**FINANCE INDUSTRY: High-Frequency Trading Anomaly**
 
-🕐 **Time:** 2:47 AM EST  
-💰 **Revenue at Risk:** $50,000 per minute  
-🔥 **Status:** CRITICAL
+🏢 **Firm:** GlobalQuant Trading  
+📊 **Assets Under Management:** $47B  
+⏱️ **Critical Threshold:** 50ms max latency  
+
+🕐 **Time:** 9:47 AM EST (Market Open)  
+⚡ **Latency Spike:** 42ms (from 8ms baseline)  
+📉 **Impact:** $5M/minute potential alpha decay  
+
+Your algorithmic trading engine is experiencing microsecond-level latency spikes during NYSE open. 
+Each extra millisecond costs ~$25K in slippage. Competitors are already 15ms ahead. 
+
+Traditional monitoring sees "42ms" as "normal" - ARF detects the 425% increase and predicts 
+$5.2M revenue loss in the next 30 minutes.
+
+**Watch ARF trigger microservice optimization before the market notices...**
+        """
+    },
+    
+    "🏥 Healthcare - Patient Monitor Alert": {
+        "component": "icu-patient-monitor",
+        "latency": 85.0,
+        "error_rate": 0.08,
+        "throughput": 200.0,
+        "cpu_util": 0.65,
+        "memory_util": 0.91,
+        "patients_affected": 12,
+        "story": """
+**HEALTHCARE: ICU Patient Monitoring System Degradation**
+
+🏥 **Hospital:** Mercy General Hospital  
+👥 **Patients at Risk:** 12 in ICU  
+⚖️ **Regulatory:** HIPAA Critical, FDA Class II Medical Device  
+
+🕐 **Time:** 2:15 AM (Night Shift)  
+📊 **Data Drop Rate:** 8% of vitals lost  
+🚨 **Alert:** Potential sensor network failure  
+
+The ICU patient monitoring system is dropping 8% of vital sign data (heart rate, O2 saturation, BP). 
+12 critically ill patients are at risk. System memory at 91% with slow response to nurse alerts.
+
+Traditional IT monitoring would wait for 15% data loss. ARF detects the pattern shift in 47 seconds 
+and triggers automatic failover to backup monitoring system.
+
+**See ARF prevent patient harm through predictive failure detection...**
+        """
+    },
+    
+    "💳 FinTech - Payment Gateway Failure": {
+        "component": "payment-gateway",
+        "latency": 1850.0,
+        "error_rate": 0.15,
+        "throughput": 8500.0,
+        "cpu_util": 0.95,
+        "memory_util": 0.87,
+        "revenue_impact": 150000,
+        "story": """
+**HIGH-REVENUE SAAS: Black Friday Payment Gateway Meltdown**
+
+🛒 **Platform:** Global E-commerce Giant  
+💰 **GMV:** $1.2B daily (Black Friday)  
+🔄 **Transactions:** 8,500/sec target  
+
+🕐 **Time:** 2:47 AM EST (Peak Shopping)  
+💸 **Cart Abandonment:** 15% error rate → $150K/minute loss  
+🔥 **Database:** Connection pool exhausted, 1.8s latency  
 
 Your payment service is buckling under Black Friday load. Database connection pool 
-is exhausted. Customers are abandoning carts. Every minute of downtime costs $50K.
+is exhausted. Customers are abandoning carts. Every minute costs $150K.
 
-Traditional monitoring would alert you at 500ms latency - by then you've lost $200K.
+Traditional monitoring would alert at 500ms - by then you've lost $600K. ARF detects 
+the exponential degradation curve at 185ms and triggers automatic horizontal scaling 
++ payment processor failover.
 
-**Watch ARF prevent this disaster...**
+**Watch ARF save $2.1M in 14 minutes through automated healing...**
         """
     },
     
-    "🚨 Database Meltdown": {
-        "description": "Connection pool exhausted. Cascading failures across 5 services.",
-        "component": "database",
-        "latency": 850,
-        "error_rate": 0.35,
-        "throughput": 450,
-        "cpu_util": 0.78,
-        "memory_util": 0.98,
+    "⚡ Energy - Smart Grid Load Imbalance": {
+        "component": "grid-balancer",
+        "latency": 320.0,
+        "error_rate": 0.04,
+        "throughput": 2500.0,
+        "cpu_util": 0.92,
+        "memory_util": 0.78,
+        "customers_affected": 85000,
         "story": """
-**SCENARIO: Database Connection Pool Exhaustion**
+**ENERGY: Smart Grid Distribution Failure**
 
-🕐 **Time:** 11:23 AM  
-⚠️ **Impact:** 5 services affected  
-🔥 **Status:** CRITICAL
+🏭 **Utility:** Pacific Power & Light  
+🏠 **Customers:** 850,000 homes/businesses  
+⚡ **Capacity:** 4.2GW peak load  
 
-Your primary database has hit max connections. API calls are timing out. 
-Errors are cascading to dependent services. Customer support calls spiking.
+🕐 **Time:** 6:45 PM (Evening Peak)  
+📈 **Load Imbalance:** 14% east/west grid differential  
+⚠️ **Risk:** Brownout affecting 85,000 customers  
 
-This is a textbook cascading failure scenario.
+The smart grid distribution system shows 320ms latency in load balancing calculations. 
+East sector drawing 14% more than capacity, risking transformer overload and potential 
+85,000-customer brownout. CPU at 92% due to unoptimized ML models.
 
-**See how ARF identifies root cause in seconds...**
+Traditional SCADA alerts only after voltage drops. ARF predicts transformer failure 
+in 28 minutes and triggers dynamic load redistribution + activates backup hydro plants.
+
+**See ARF prevent blackout through predictive infrastructure management...**
         """
     },
     
-    "⚡ Viral Traffic Spike": {
-        "description": "Viral tweet drives 10x traffic. Infrastructure straining.",
-        "component": "api-service",
-        "latency": 280,
-        "error_rate": 0.12,
-        "throughput": 15000,
-        "cpu_util": 0.88,
-        "memory_util": 0.65,
+    "🚀 SaaS - AI Inference API Meltdown": {
+        "component": "ai-inference-engine",
+        "latency": 2450.0,
+        "error_rate": 0.22,
+        "throughput": 450.0,
+        "cpu_util": 0.97,
+        "memory_util": 0.95,
+        "api_users": 4250,
         "story": """
-**SCENARIO: Unexpected Viral Traffic**
+**AI SAAS PLATFORM: GPT-4 Inference Service Failure**
 
-🕐 **Time:** 3:15 PM  
-📈 **Traffic Spike:** 10x normal load  
-⚠️ **Status:** HIGH
+🤖 **Service:** Enterprise AI Assistant API  
+👥 **Customers:** 4,250 API users  
+💸 **Pricing:** $0.12/1K tokens, $85K daily revenue  
 
-A celebrity just tweeted about your product. Traffic jumped from 1,500 to 15,000 
-requests/sec. Your auto-scaling is struggling to keep up. Latency is climbing.
+🕐 **Time:** 11:15 AM (Business Hours Peak)  
+💥 **Failure Rate:** 22% of inference requests  
+⏱️ **Latency:** 2.45s (vs 350ms SLA)  
 
-You have maybe 15 minutes before this becomes a full outage.
+Your GPT-4 inference service is failing 22% of requests with 2.45s latency vs 350ms SLA. 
+CUDA memory fragmentation causing GPU OOM errors. 4,250 enterprise customers affected, 
+including 3 Fortune 500 companies.
 
-**Watch ARF predict the failure and trigger scaling...**
+Traditional monitoring sees "GPUs at 97%" as normal. ARF detects the memory fragmentation 
+pattern and triggers automatic container restart + model sharding across 8 additional GPUs.
+
+**Watch ARF maintain 99.97% uptime for AI inference at scale...**
         """
     },
     
-    "🔥 Memory Leak Discovery": {
-        "description": "Slow memory leak detected. 18 minutes until OOM crash.",
-        "component": "cache-service",
-        "latency": 320,
-        "error_rate": 0.05,
-        "throughput": 2200,
-        "cpu_util": 0.45,
-        "memory_util": 0.94,
+    "📱 Gaming - Global Leaderboard Corruption": {
+        "component": "leaderboard-service",
+        "latency": 580.0,
+        "error_rate": 0.18,
+        "throughput": 12500.0,
+        "cpu_util": 0.89,
+        "memory_util": 0.93,
+        "concurrent_players": 285000,
         "story": """
-**SCENARIO: Memory Leak Time Bomb**
+**GAMING INDUSTRY: Global Tournament Leaderboard Failure**
 
-🕐 **Time:** 9:42 PM  
-💾 **Memory:** 94% (climbing 2%/hour)  
-⏰ **Time to Crash:** ~18 minutes
+🎮 **Game:** "Battle Royale Legends"  
+👥 **Players:** 285,000 concurrent  
+🏆 **Tournament Prize Pool:** $2.5M  
 
-A memory leak has been slowly growing for 8 hours. Most monitoring tools won't 
-catch this until it's too late. At current trajectory, the service crashes at 10 PM.
+🕐 **Time:** 8:30 PM (Global Tournament Final)  
+📉 **Leaderboard Corruption:** 18% of scores invalid  
+😠 **Player Complaints:** 4,200+ in 15 minutes  
 
-That's right when your international users come online.
+The global tournament leaderboard service is corrupting 18% of player scores due to 
+Redis cluster failover issues. 285,000 concurrent players affected during $2.5M 
+prize pool tournament finals. Community trust collapsing in real-time.
 
-**See ARF's predictive engine spot this before disaster...**
-        """
-    },
-    
-    "✅ Normal Operations": {
-        "description": "Everything running smoothly - baseline metrics.",
-        "component": "api-service",
-        "latency": 85,
-        "error_rate": 0.008,
-        "throughput": 1200,
-        "cpu_util": 0.35,
-        "memory_util": 0.42,
-        "story": """
-**SCENARIO: Healthy System Baseline**
+Traditional gaming ops would restart during tournament. ARF detects the specific 
+Redis shard failure and triggers hot failover to standby cluster with zero data loss.
 
-🕐 **Time:** 2:30 PM  
-✅ **Status:** NORMAL  
-📊 **All Metrics:** Within range
-
-This is what good looks like. All services running smoothly. 
-
-Use this to show how ARF distinguishes between normal operations and actual incidents.
-
-**Intelligent anomaly detection prevents alert fatigue...**
+**See ARF save a $250M franchise reputation in 47 seconds...**
         """
     }
 }
