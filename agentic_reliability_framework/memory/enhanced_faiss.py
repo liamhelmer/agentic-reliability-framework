@@ -142,7 +142,7 @@ class EnhancedFAISSIndex:
                     })
             
             # Sort by similarity (highest first)
-            results.sort(key=lambda x: x["similarity"], reverse=True)
+            results.sort(key=lambda x: float(x.get("similarity", 0.0)), reverse=True)
             
             logger.info(
                 f"Semantic search for '{query_text[:50]}...' "
@@ -198,9 +198,9 @@ class EnhancedFAISSIndex:
     def get_embeddings(self) -> NDArray[np.float32]:
         """
         Get all embeddings stored in the index.
-        
+    
         Returns:
-            numpy.ndarray: Array of all embeddings
+        numpy.ndarray: Array of all embeddings
         """
         try:
             # Check if the underlying FAISS index has a way to retrieve vectors
@@ -208,6 +208,21 @@ class EnhancedFAISSIndex:
                 total = self.faiss.get_count()
                 if total == 0:
                     return np.array([], dtype=np.float32).reshape(0, MemoryConstants.VECTOR_DIM)
+            
+                # Reconstruct all vectors
+                vectors = []
+                for i in range(total):
+                    vec = self.faiss.index.reconstruct(i)
+                    vectors.append(vec)
+                return np.array(vectors, dtype=np.float32)
+            else:
+                # If reconstruction is not available, return empty array
+                logger.warning("FAISS index does not support reconstruct_n, returning empty array")
+                return np.array([], dtype=np.float32).reshape(0, MemoryConstants.VECTOR_DIM)
+                
+    except Exception as e:
+        logger.error(f"Error getting embeddings: {e}")
+        return np.array([], dtype=np.float32).reshape(0, MemoryConstants.VECTOR_DIM)
                 
                 # Reconstruct all vectors
                 vectors = []
