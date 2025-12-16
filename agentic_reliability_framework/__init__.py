@@ -3,11 +3,10 @@ Agentic Reliability Framework (ARF)
 Production-grade multi-agent AI for reliability monitoring
 """
 
-from typing import TYPE_CHECKING, Any
+from typing import Any, TYPE_CHECKING
 
-from .__version__ import __version__  # runtime import for __version__
+from .__version__ import __version__  # runtime: provide package version
 
-# Exports (keep names here for runtime and for static analysis)
 __all__ = [
     "__version__",
     "EnhancedReliabilityEngine",
@@ -22,49 +21,42 @@ __all__ = [
     "enhanced_engine",
 ]
 
-# Static-only imports to satisfy linters / static analyzers (Ruff / pyflakes).
-# These imports are only executed during type-checking / static analysis and
-# will not cause runtime imports. This preserves the lazy import behavior.
-if TYPE_CHECKING:  # pragma: no cover - static analysis only
-    from .app import (
-        AdvancedAnomalyDetector,
-        BusinessImpactCalculator,
-        EnhancedReliabilityEngine,
-        SimplePredictiveEngine,
-        create_enhanced_ui,
-    )
-    from .lazy import (
-        enhanced_engine,
-        get_agents,
-        get_engine,
-        get_faiss_index,
-        get_business_metrics,
-    )
+# --- For static analyzers only: declare the names so mypy/ruff see them. ---
+# We intentionally *do not* import concrete implementations here because
+# runtime imports are lazy (PEP 562) via __getattr__ below.
+# Mark these as Any to avoid hard coupling to module layout during static checks.
+if TYPE_CHECKING:  # pragma: no cover
+    EnhancedReliabilityEngine: Any
+    SimplePredictiveEngine: Any
+    BusinessImpactCalculator: Any
+    AdvancedAnomalyDetector: Any
+    create_enhanced_ui: Any
+    get_engine: Any
+    get_agents: Any
+    get_faiss_index: Any
+    get_business_metrics: Any
+    enhanced_engine: Any
 
-# Lazy imports at runtime using PEP 562 (__getattr__ on modules).
-# This avoids the cost of importing heavy modules at package import time.
-def __getattr__(name: str) -> Any:
+# --- Lazy runtime imports (PEP 562) ---
+def __getattr__(name: str):
+    # Classes / functions from app.py
     if name == "EnhancedReliabilityEngine":
-        from .app import EnhancedReliabilityEngine
-
+        from .app import EnhancedReliabilityEngine  # local import
         return EnhancedReliabilityEngine
     if name == "SimplePredictiveEngine":
         from .app import SimplePredictiveEngine
-
         return SimplePredictiveEngine
     if name == "BusinessImpactCalculator":
         from .app import BusinessImpactCalculator
-
         return BusinessImpactCalculator
     if name == "AdvancedAnomalyDetector":
         from .app import AdvancedAnomalyDetector
-
         return AdvancedAnomalyDetector
     if name == "create_enhanced_ui":
         from .app import create_enhanced_ui
-
         return create_enhanced_ui
 
+    # Items implemented in lazy.py
     if name in {
         "get_engine",
         "get_agents",
@@ -94,7 +86,6 @@ def __getattr__(name: str) -> Any:
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
-def __dir__() -> list[str]:
-    # Helpful for autocompletion and tooling: show our public API.
-    std = globals().keys()
-    return sorted(set(list(std) + list(__all__)))
+def __dir__():
+    # Improve autocompletion: list module globals + public API names.
+    return sorted(set(list(globals().keys()) + list(__all__)))
