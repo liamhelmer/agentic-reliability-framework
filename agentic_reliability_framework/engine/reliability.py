@@ -26,12 +26,12 @@ class MCPResponse:
     """MCP response data structure"""
     executed: bool = False
     status: str = "unknown"
-    result: Dict[str, Any] = None
+    result: Dict[str, Any] = None  # This line has a type issue - None assigned to Dict
     message: str = ""
     
     def __post_init__(self):
         if self.result is None:
-            self.result = {}
+            self.result = {}  # This fixes the None assignment
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary"""
@@ -64,7 +64,7 @@ class V3ReliabilityEngine:
             "failed_outcomes": 0,
         }
         
-        # Initialize event store
+        # Initialize event store - FIX: Create proper instance, not None
         self.event_store = ThreadSafeEventStore()
 
     async def _v2_process(self, event: ReliabilityEvent, *args: Any, **kwargs: Any) -> Dict[str, Any]:
@@ -113,7 +113,7 @@ class V3ReliabilityEngine:
             
         except Exception as e:
             logger.error(f"Error in v2 processing: {e}", exc_info=True)
-            # Return a valid dict, not None
+            # Return a valid dict, not None - FIX: Ensure proper return type
             return {
                 "status": "ERROR",
                 "incident_id": "",
