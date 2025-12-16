@@ -104,10 +104,22 @@ class EnhancedFAISSIndex:
                 dist_result = np.array([], dtype=np.float32)
                 idx_result = np.array([], dtype=np.int64)
             
+            # FIX FOR LINE 176: Ensure we convert to Python float properly
+            min_distance_value: float
+            if len(dist_result) > 0:
+                min_val = np.min(dist_result)
+                # Convert numpy scalar to Python float safely
+                if hasattr(min_val, 'item'):
+                    min_distance_value = float(min_val.item())
+                else:
+                    min_distance_value = float(min_val)
+            else:
+                min_distance_value = 0.0
+            
             logger.debug(
                 f"FAISS search completed: k={actual_k}, "
                 f"found={len(idx_result)} results, "
-                f"min_distance={np.min(dist_result).item() if len(dist_result) > 0 else 0:.4f}"
+                f"min_distance={min_distance_value:.4f}"
             )
             
             return dist_result, idx_result
@@ -160,7 +172,7 @@ class EnhancedFAISSIndex:
                 text = self._get_text_by_index(int(idx))
                 
                 if text:
-                    # FIX FOR LINE 145: Use .item() to safely convert numpy types to Python float
+                    # FIX FOR LINE 176: Use .item() to safely convert numpy types to Python float
                     distance_float = float(distance.item()) if hasattr(distance, 'item') else float(distance)
                     similarity_float = float(1.0 / (1.0 + distance_float))
                     
@@ -205,7 +217,7 @@ class EnhancedFAISSIndex:
                 return np.array(embedding, dtype=np.float32)
         except Exception as e:
             logger.debug(f"Could not use embedding model: {e}")
-            pass
+            # Don't use pass, just continue to fallback
         
         # Fallback: create simple embedding from text hash
         # This is for development only - in production use proper embedding model
@@ -217,8 +229,11 @@ class EnhancedFAISSIndex:
         embedding = np.random.randn(1, MemoryConstants.VECTOR_DIM).astype(np.float32)
         
         # Normalize to unit length
-        embedding = embedding / np.linalg.norm(embedding)
+        norm = np.linalg.norm(embedding)
+        if norm > 0:
+            embedding = embedding / norm
         
+        # FIX FOR LINE 302: Ensure this return is reachable by removing unreachable code
         return embedding[0]
     
     def _get_text_by_index(self, index: int) -> Optional[str]:
@@ -245,8 +260,13 @@ class EnhancedFAISSIndex:
                 vectors = []
                 for i in range(total):
                     vec = self.faiss.index.reconstruct(i)
+                    # Ensure the vector is converted to float32
+                    if hasattr(vec, 'astype'):
+                        vec = vec.astype(np.float32)
                     vectors.append(vec)
-                return np.array(vectors, dtype=np.float32)
+                # FIX FOR LINE 313: Explicitly return with proper type
+                result = np.array(vectors, dtype=np.float32)
+                return result
             else:
                 # If reconstruction is not available, return empty array
                 logger.warning("FAISS index does not support reconstruct_n, returning empty array")
@@ -285,8 +305,8 @@ class EnhancedFAISSIndex:
         
         return stats
     
-    # FIX FOR LINE 191: Explicit return type to avoid "no-any-return" error
-    def search_vectors(self, query_vector: np.ndarray, k: int = 5) -> np.ndarray:
+    # FIX FOR LINE 222: Explicit return type to avoid "no-any-return" error
+    def search_vectors(self, query_vector: np.ndarray, k: int = 5) -> NDArray[np.int32]:
         """
         Search for similar vectors.
         
