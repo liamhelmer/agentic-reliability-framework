@@ -1,4 +1,5 @@
 # Standard imports
+import logging
 import threading
 from typing import Tuple, Optional, Any
 import numpy as np
@@ -8,6 +9,8 @@ import faiss  # fixed import
 
 # Project imports
 # from agentic_reliability_framework.models import ReliabilityEvent
+
+logger = logging.getLogger(__name__)
 
 
 class ProductionFAISSIndex:
@@ -52,7 +55,6 @@ class ProductionFAISSIndex:
 
     def shutdown(self) -> None:
         """Graceful shutdown."""
-        logger = logging.getLogger(__name__)
         logger.info("FAISS index shutdown")
 
 
@@ -79,8 +81,3 @@ def create_faiss_index(dim: int = 384) -> ProductionFAISSIndex:
         ProductionFAISSIndex instance
     """
     return ProductionFAISSIndex(dim=dim)
-
-
-# Setup logging
-import logging
-logger = logging.getLogger(__name__)
