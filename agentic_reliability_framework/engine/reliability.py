@@ -1,27 +1,49 @@
-# Standard imports
 from __future__ import annotations
 import asyncio
 from typing import List, Dict, Any
 
-# Project imports
 from agentic_reliability_framework.memory.rag_graph import RAGGraphMemory
 from agentic_reliability_framework.mcp.server import MCPServer
-from agentic_reliability_framework.policy.actions import HealingAction  # <-- Fixed import
+from agentic_reliability_framework.policy.actions import HealingAction
 
-# Other imports if needed
-# from agentic_reliability_framework.models import ReliabilityEvent, ToolResult, etc.
+# Placeholder types; replace with actual classes if available
+class ReliabilityEvent:
+    pass
+
+class MCPResponse:
+    executed: bool = False
 
 class V3ReliabilityEngine:
     """Enhanced engine with learning capability"""
 
     def __init__(self, rag_graph: RAGGraphMemory, mcp_server: MCPServer):
-        self.rag = rag_graph
-        self.mcp = mcp_server
+        self.rag: RAGGraphMemory = rag_graph
+        self.mcp: MCPServer = mcp_server
+        self.policy_engine: Any = None  # Replace with actual PolicyEngine type
 
-    async def process_event_enhanced(self, event, *args, **kwargs):
+    async def _v2_process(self, event: ReliabilityEvent, *args, **kwargs) -> Dict[str, Any]:
+        """Stub for original v2 processing"""
+        return {"status": "ANOMALY", "incident_id": "dummy_incident_id"}
+
+    def _calculate_outcome_stats(self, incidents: List[Any]) -> Dict[str, Any]:
+        """Stub for outcome statistics calculation"""
+        return {}
+
+    def _create_mcp_request(self, action: HealingAction, event: ReliabilityEvent, historical_context: List[Any]) -> Any:
+        """Stub to create MCP request"""
+        return {}
+
+    async def _record_outcome(self, incident_id: str, action: HealingAction, mcp_response: MCPResponse) -> Any:
+        """Stub to record outcome"""
+        return {}
+
+    def _get_most_effective_action(self, incidents: List[Any]) -> Any:
+        """Stub to return most effective past action"""
+        return None
+
+    async def process_event_enhanced(self, event: ReliabilityEvent, *args, **kwargs) -> Dict[str, Any]:
         """Process a reliability event with RAG + MCP enhancements"""
-        # Original v2 analysis
-        result = await self._v2_process(event, *args, **kwargs)
+        result: Dict[str, Any] = await self._v2_process(event, *args, **kwargs)
 
         if result["status"] != "ANOMALY":
             return result
@@ -30,29 +52,23 @@ class V3ReliabilityEngine:
         similar_incidents = self.rag.find_similar(query_event=event, k=3)
 
         # Enhance policy decision
-        enhanced_policy_input = {
+        enhanced_policy_input: Dict[str, Any] = {
             "current_event": event,
             "similar_past_incidents": similar_incidents,
             "outcome_statistics": self._calculate_outcome_stats(similar_incidents),
         }
 
-        healing_actions: List[HealingAction] = self.policy_engine.evaluate_with_context(
-            enhanced_policy_input
-        )
+        healing_actions: List[HealingAction] = []
+        if self.policy_engine:
+            healing_actions = self.policy_engine.evaluate_with_context(enhanced_policy_input)
 
         # MCP execution
-        mcp_results = []
+        mcp_results: List[MCPResponse] = []
         for action in healing_actions:
-            mcp_request = self._create_mcp_request(
-                action=action,
-                event=event,
-                historical_context=similar_incidents,
-            )
-
-            mcp_response = await self.mcp.execute_tool(mcp_request)
+            mcp_request = self._create_mcp_request(action, event, similar_incidents)
+            mcp_response: MCPResponse = await self.mcp.execute_tool(mcp_request)
             mcp_results.append(mcp_response)
 
-            # Outcome recording
             if getattr(mcp_response, "executed", False):
                 outcome = await self._record_outcome(
                     incident_id=result["incident_id"],
