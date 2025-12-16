@@ -1,10 +1,10 @@
 """
 Data Models for Enterprise Agentic Reliability Framework
-Fixed version with security patches and validation improvements
+Fixed version with security patches, validation improvements, and full type hints
 """
 
 from pydantic import BaseModel, Field, field_validator, computed_field, ConfigDict
-from typing import Optional, List, Literal
+from typing import Optional, List, Literal, Any, Dict
 from enum import Enum
 from datetime import datetime, timezone
 import hashlib
@@ -63,20 +63,9 @@ class ReliabilityEvent(BaseModel):
         min_length=1,
         max_length=100
     )
-    latency_p99: float = Field(
-        ge=0,
-        lt=300000,
-        description="P99 latency in milliseconds"
-    )
-    error_rate: float = Field(
-        ge=0,
-        le=1,
-        description="Error rate between 0 and 1"
-    )
-    throughput: float = Field(
-        ge=0,
-        description="Requests per second"
-    )
+    latency_p99: float = Field(ge=0, lt=300000, description="P99 latency in milliseconds")
+    error_rate: float = Field(ge=0, le=1, description="Error rate between 0 and 1")
+    throughput: float = Field(ge=0, description="Requests per second")
     cpu_util: Optional[float] = Field(default=None, ge=0, le=1, description="CPU utilization (0-1)")
     memory_util: Optional[float] = Field(default=None, ge=0, le=1, description="Memory utilization (0-1)")
     revenue_impact: Optional[float] = Field(default=None, ge=0, description="Estimated revenue impact in dollars")
@@ -111,17 +100,17 @@ class ReliabilityEvent(BaseModel):
     @computed_field
     def fingerprint(self) -> str:
         """Generate deterministic fingerprint for event deduplication"""
-        components = [
+        components: List[str] = [
             self.component,
             self.service_mesh,
             f"{self.latency_p99:.2f}",
             f"{self.error_rate:.4f}",
             f"{self.throughput:.2f}"
         ]
-        fingerprint_str = ":".join(components)
+        fingerprint_str: str = ":".join(components)
         return hashlib.sha256(fingerprint_str.encode()).hexdigest()
 
-    def model_post_init(self, __context: Optional[dict] = None) -> None:
+    def model_post_init(self, __context: Optional[Dict[str, Any]] = None) -> None:
         """Validate cross-field constraints after initialization"""
         upstream_set: set[str] = set(self.upstream_deps)
         downstream_set: set[str] = set(self.downstream_deps)
