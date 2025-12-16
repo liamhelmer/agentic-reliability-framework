@@ -820,8 +820,7 @@ class RAGGraphMemory:
                     if isinstance(item, np.ndarray):
                         data[key][i] = item.tolist()
         
-        # Explicitly cast to Dict[str, Any] for mypy
-        return cast(Dict[str, Any], data)
+        return data
     
     def get_most_effective_actions(self, component: str, k: int = 3) -> List[Dict[str, Any]]:
         """
