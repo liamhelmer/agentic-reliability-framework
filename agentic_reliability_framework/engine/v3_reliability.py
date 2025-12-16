@@ -6,13 +6,13 @@ Pythonic implementation with proper typing, error handling, and safety features.
 import logging
 import time
 import threading
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Union, cast
 from contextlib import asynccontextmanager
 
 import numpy as np
 
 from ..memory.rag_graph import RAGGraphMemory
-from .reliability import EnhancedReliabilityEngine as V2Engine
+from .reliability import V3ReliabilityEngine as V2Engine  # Changed from EnhancedReliabilityEngine
 from .mcp_server import MCPServer
 from ..config import config
 from ..models import ReliabilityEvent
@@ -426,6 +426,7 @@ class V3ReliabilityEngine(V2Engine):
             
             # Store outcome in RAG if method exists
             if hasattr(self.rag, 'store_outcome'):
+                # Ensure we pass all required arguments
                 outcome_id = self.rag.store_outcome(
                     incident_id=incident_id,
                     actions_taken=actions_taken,
@@ -574,20 +575,24 @@ def create_v3_engine(
             logger.warning("Cannot create V3 engine: missing dependencies")
             return None
         
-        # Cast protocols to concrete types for V3ReliabilityEngine
-        from .mcp_server import MCPServer
-        from ..memory.rag_graph import RAGGraphMemory
-        
-        # Check types and cast
+        # Check types and handle type conversion
         if not isinstance(rag_graph, RAGGraphMemory):
-            logger.warning(f"RAG graph has unexpected type: {type(rag_graph)}")
+            # If it implements RAGProtocol but isn't RAGGraphMemory, try to adapt
+            # For now, we require RAGGraphMemory specifically
+            logger.warning(f"RAG graph must be instance of RAGGraphMemory, got {type(rag_graph)}")
             return None
             
         if not isinstance(mcp_server, MCPServer):
-            logger.warning(f"MCP server has unexpected type: {type(mcp_server)}")
+            # If it implements MCPProtocol but isn't MCPServer, try to adapt
+            # For now, we require MCPServer specifically
+            logger.warning(f"MCP server must be instance of MCPServer, got {type(mcp_server)}")
             return None
         
-        return V3ReliabilityEngine(rag_graph=rag_graph, mcp_server=mcp_server)
+        # Cast to the correct types
+        rag_memory = cast(RAGGraphMemory, rag_graph)
+        mcp_server_instance = cast(MCPServer, mcp_server)
+        
+        return V3ReliabilityEngine(rag_graph=rag_memory, mcp_server=mcp_server_instance)
         
     except ImportError as e:
         logger.error(f"Error creating V3 engine: {e}")
