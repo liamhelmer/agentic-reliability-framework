@@ -210,7 +210,8 @@ class V3ReliabilityEngine:
         severity_value = event.severity.value if hasattr(event.severity, 'value') else "low"
         severity_numeric: int
         
-        # FIXED: Simplified logic to avoid unreachable code
+        # FIXED: Completely restructured to avoid any unreachable code
+        # Handle different types of severity values
         if isinstance(severity_value, str):
             # Map string severity to numeric value
             severity_map = {"low": 1, "medium": 2, "high": 3, "critical": 4}
@@ -226,6 +227,7 @@ class V3ReliabilityEngine:
             else:
                 severity_numeric = 1
         else:
+            # Handle other types (int, float, etc.)
             try:
                 severity_numeric = int(severity_value)
             except (TypeError, ValueError):
