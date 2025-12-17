@@ -1,6 +1,6 @@
 """
 Enhanced V3 Reliability Engine with RAG Graph and MCP Server integration.
-Primary implementation for ARF v3 with learning capabilities and execution boundaries.
+Extends the base V3ReliabilityEngine with full v3 features.
 """
 
 from __future__ import annotations
@@ -15,15 +15,18 @@ from typing import Dict, Any, List, Optional, Union, cast, TYPE_CHECKING
 
 import numpy as np
 
-# Local imports with conditional typing to avoid circular dependencies
+# Local imports with conditional typing
 if TYPE_CHECKING:
     from ..memory.rag_graph import RAGGraphMemory
-    from ..engine.mcp_server import MCPServer, MCPRequestStatus, MCPMode
+    from ..engine.mcp_server import MCPServer
     from ..models import ReliabilityEvent
-    from ..policy.actions import HealingAction
+else:
+    # Runtime imports will be done lazily
+    pass
 
 from ..config import config
-from .interfaces import ReliabilityEngineProtocol, MCPProtocol, RAGProtocol
+from .interfaces import ReliabilityEngineProtocol
+from .reliability import V3ReliabilityEngine as BaseV3Engine, MCPResponse as BaseMCPResponse
 
 logger = logging.getLogger(__name__)
 
@@ -32,76 +35,30 @@ DEFAULT_LEARNING_MIN_DATA_POINTS = 5
 
 
 @dataclass
-class MCPResponse:
-    """MCP response data structure for v3 engine"""
-    executed: bool = False
-    status: str = "unknown"
-    result: Dict[str, Any] = field(default_factory=dict)
-    message: str = ""
+class MCPResponse(BaseMCPResponse):
+    """Extended MCP response with v3 enhancements"""
+    approval_id: Optional[str] = None
+    tool_result: Optional[Dict[str, Any]] = None
     
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary"""
-        return {
-            "executed": self.executed,
-            "status": self.status,
-            "result": self.result,
-            "message": self.message
-        }
+        """Convert to dictionary with v3 fields"""
+        base_dict = super().to_dict()
+        if self.approval_id:
+            base_dict["approval_id"] = self.approval_id
+        if self.tool_result:
+            base_dict["tool_result"] = self.tool_result
+        return base_dict
 
 
-class BaseReliabilityEngine:
-    """
-    Base reliability engine with common functionality.
-    This class exists to avoid circular imports from reliability.py.
-    """
-    
-    def __init__(
-        self,
-        rag_graph: Optional[RAGGraphMemory] = None,
-        mcp_server: Optional[MCPServer] = None
-    ) -> None:
-        """Initialize base engine with optional v3 dependencies"""
-        self.rag = rag_graph
-        self.mcp = mcp_server
-        self._lock = threading.RLock()
-        self._start_time = time.time()
-        self.metrics: Dict[str, Union[int, float]] = {
-            "events_processed": 0,
-            "anomalies_detected": 0,
-            "rag_queries": 0,
-            "mcp_executions": 0,
-            "successful_outcomes": 0,
-            "failed_outcomes": 0,
-        }
-    
-    async def process_event_enhanced(self, event: ReliabilityEvent) -> Dict[str, Any]:
-        """Base implementation - should be overridden by subclasses"""
-        raise NotImplementedError("Subclasses must implement process_event_enhanced")
-    
-    async def process_event(self, event: ReliabilityEvent) -> Dict[str, Any]:
-        """Alias for process_event_enhanced for protocol compatibility"""
-        return await self.process_event_enhanced(event)
-    
-    def get_stats(self) -> Dict[str, Any]:
-        """Get engine statistics - should be overridden"""
-        raise NotImplementedError("Subclasses must implement get_stats")
-    
-    def get_engine_stats(self) -> Dict[str, Any]:
-        """Alias for get_stats for compatibility"""
-        return self.get_stats()
-
-
-class V3ReliabilityEngine(BaseReliabilityEngine):
+class V3ReliabilityEngine(BaseV3Engine):
     """
     Enhanced reliability engine with RAG Graph memory and MCP execution boundary.
     
-    V3 Design Features:
+    Extends the base V3ReliabilityEngine with:
     1. Semantic search of similar incidents via FAISS
-    2. Historical context enhancement for policy decisions
+    2. Historical context enhancement for policy decisions  
     3. MCP-governed execution of healing actions
     4. Outcome recording for continuous learning loop
-    
-    Architecture: Bridge pattern connecting v2 analysis with v3 enhancements
     """
     
     def __init__(
@@ -112,19 +69,18 @@ class V3ReliabilityEngine(BaseReliabilityEngine):
         **kwargs: Any
     ) -> None:
         """
-        Initialize V3 engine with RAG and MCP dependencies.
+        Initialize enhanced V3 engine with RAG and MCP dependencies.
         
         Args:
-            rag_graph: Optional RAG graph for historical context
-            mcp_server: Optional MCP server for execution boundary
+            rag_graph: RAG graph for historical context
+            mcp_server: MCP server for execution boundary
+            *args: Additional args passed to base class
+            **kwargs: Additional kwargs passed to base class
         """
-        super().__init__(rag_graph=rag_graph, mcp_server=mcp_server)
-        
-        # Import actual implementations (delayed to avoid circular imports)
-        from ..engine.reliability import V3ReliabilityEngine as V2Engine
-        
-        # Store reference to v2 engine for fallback processing
-        self._v2_engine = V2Engine(rag_graph, mcp_server)
+        # Pass RAG and MCP to base class via kwargs
+        kwargs['rag_graph'] = rag_graph
+        kwargs['mcp_server'] = mcp_server
+        super().__init__(*args, **kwargs)
         
         # V3-specific state
         self._v3_lock = threading.RLock()
@@ -147,17 +103,9 @@ class V3ReliabilityEngine(BaseReliabilityEngine):
             "last_learning_update": time.time(),
         }
         
-        # Check MCP server mode safely
-        mcp_mode = "unknown"
-        if mcp_server and hasattr(mcp_server, 'mode'):
-            if hasattr(mcp_server.mode, 'value'):
-                mcp_mode = mcp_server.mode.value
-            else:
-                mcp_mode = str(mcp_server.mode)
-        
         logger.info(
             f"Initialized Enhanced V3ReliabilityEngine with RAG and MCP "
-            f"(mode={mcp_mode})"
+            f"(RAG={rag_graph is not None}, MCP={mcp_server is not None})"
         )
     
     @property
@@ -180,27 +128,31 @@ class V3ReliabilityEngine(BaseReliabilityEngine):
         
         return True
     
-    async def process_event_enhanced(self, event: ReliabilityEvent) -> Dict[str, Any]:
+    async def process_event_enhanced(self, *args: Any, **kwargs: Any) -> Dict[str, Any]:
         """
         Enhanced event processing with RAG retrieval and MCP execution.
         
-        Implementation of the ARF v3 pipeline:
-        1. Basic v2 anomaly detection
-        2. RAG retrieval of similar incidents
-        3. Historical context enhancement
-        4. MCP-governed action execution
-        5. Outcome recording for learning
+        Extends the base implementation with v3 features.
         """
+        event = kwargs.get("event") or (args[0] if args else None)
+        if not event or not isinstance(event, ReliabilityEvent):
+            return {
+                "status": "ERROR",
+                "incident_id": "",
+                "error": "Invalid event",
+                "healing_actions": []
+            }
+        
         # Start timing
         start_time = time.time()
         
         try:
-            # Step 1: Run v2 processing as baseline
-            v2_result = await self._v2_engine._v2_process(event)
+            # Step 1: Run base processing
+            base_result = await super().process_event_enhanced(event)
             
             # If not an anomaly, return early
-            if v2_result.get("status") != "ANOMALY":
-                return v2_result
+            if base_result.get("status") != "ANOMALY":
+                return base_result
             
             # Step 2: RAG RETRIEVAL (v3 enhancement)
             rag_context: Dict[str, Any] = {}
@@ -219,15 +171,14 @@ class V3ReliabilityEngine(BaseReliabilityEngine):
                     rag_context = self._build_rag_context(similar_incidents, event)
                     
                 except Exception as e:
-                    logger.warning(f"RAG retrieval failed, falling back to v2: {e}")
-                    # Fall back to v2 without RAG context
+                    logger.warning(f"RAG retrieval failed: {e}")
+                    # Continue without RAG context
             
             # Step 3: ENHANCE POLICY DECISION with historical context
             enhanced_actions = []
+            base_actions = base_result.get("healing_actions", [])
+            
             if similar_incidents:
-                # Get base actions from v2
-                base_actions = v2_result.get("healing_actions", [])
-                
                 # Enhance with historical context
                 enhanced_actions = self._enhance_actions_with_context(
                     base_actions, similar_incidents, event, rag_context
@@ -236,7 +187,7 @@ class V3ReliabilityEngine(BaseReliabilityEngine):
                 with self._v3_lock:
                     self.v3_metrics["historical_context_used"] += 1
             else:
-                enhanced_actions = v2_result.get("healing_actions", [])
+                enhanced_actions = base_actions
             
             # Step 4: MCP EXECUTION BOUNDARY (v3 enhancement)
             mcp_results: List[Dict[str, Any]] = []
@@ -251,25 +202,35 @@ class V3ReliabilityEngine(BaseReliabilityEngine):
                         )
                         
                         # Execute via MCP
-                        mcp_response = await self.mcp.execute_tool(mcp_request)
+                        mcp_response_dict = await self.mcp.execute_tool(mcp_request)
+                        
+                        # Convert to MCPResponse object
+                        mcp_response = MCPResponse(
+                            executed=mcp_response_dict.get("executed", False),
+                            status=mcp_response_dict.get("status", "unknown"),
+                            result=mcp_response_dict.get("result", {}),
+                            message=mcp_response_dict.get("message", ""),
+                            approval_id=mcp_response_dict.get("approval_id"),
+                            tool_result=mcp_response_dict.get("tool_result")
+                        )
                         
                         with self._v3_lock:
                             self.v3_metrics["mcp_calls"] += 1
-                            if mcp_response.get("executed") or mcp_response.get("status") == "completed":
+                            if mcp_response.executed or mcp_response.status == "completed":
                                 self.v3_metrics["mcp_successes"] += 1
                         
-                        mcp_results.append(mcp_response)
+                        mcp_results.append(mcp_response.to_dict())
                         
                         # If action was executed, record it
-                        if mcp_response.get("executed") or mcp_response.get("status") == "completed":
+                        if mcp_response.executed or mcp_response.status == "completed":
                             executed_actions.append(action)
                             
                             # Step 5: OUTCOME RECORDING (v3 learning loop)
                             if self.rag:
                                 outcome = await self._record_outcome(
-                                    incident_id=v2_result["incident_id"],
+                                    incident_id=base_result["incident_id"],
                                     action=action,
-                                    mcp_response=mcp_response,
+                                    mcp_response=mcp_response.to_dict(),  # Pass as dict
                                     event=event,
                                     similar_incidents=similar_incidents
                                 )
@@ -277,7 +238,7 @@ class V3ReliabilityEngine(BaseReliabilityEngine):
                                 # Update learning state
                                 success = outcome.get("success", False)
                                 self._update_learning_state(success, {
-                                    "incident_id": v2_result["incident_id"],
+                                    "incident_id": base_result["incident_id"],
                                     "action": action,
                                     "similar_incidents_count": len(similar_incidents),
                                     "rag_context": rag_context
@@ -293,7 +254,7 @@ class V3ReliabilityEngine(BaseReliabilityEngine):
             
             # Step 6: Build comprehensive result
             result: Dict[str, Any] = {
-                **v2_result,
+                **base_result,
                 "v3_processing": "enabled" if self.v3_enabled else "disabled",
                 "v3_enhancements": {
                     "rag_enabled": bool(self.rag),
@@ -301,6 +262,7 @@ class V3ReliabilityEngine(BaseReliabilityEngine):
                     "learning_enabled": getattr(config, 'learning_enabled', False),
                 },
                 "processing_time_ms": (time.time() - start_time) * 1000,
+                "engine_version": "v3_enhanced",
             }
             
             # Add v3-specific data if available
@@ -319,27 +281,28 @@ class V3ReliabilityEngine(BaseReliabilityEngine):
             # Update metrics
             with self._lock:
                 self.metrics["events_processed"] += 1
-                if v2_result.get("status") == "ANOMALY":
+                if base_result.get("status") == "ANOMALY":
                     self.metrics["anomalies_detected"] += 1
                 if mcp_results:
-                    self.metrics["mcp_executions"] += len([r for r in mcp_results if r.get("executed")])
+                    executed_count = len([r for r in mcp_results if r.get("executed")])
+                    self.metrics["mcp_executions"] += executed_count
             
             return result
             
         except Exception as e:
-            logger.exception(f"Error in v3 event processing: {e}")
+            logger.exception(f"Error in enhanced v3 event processing: {e}")
             
-            # Fall back to v2 result on error
+            # Fall back to base result on error
             try:
-                v2_result = await self._v2_engine._v2_process(event)
-                v2_result["v3_error"] = str(e)
-                v2_result["v3_processing"] = "failed"
-                return v2_result
-            except Exception as v2_error:
+                base_result = await super().process_event_enhanced(event)
+                base_result["v3_error"] = str(e)
+                base_result["v3_processing"] = "failed"
+                return base_result
+            except Exception as base_error:
                 return {
                     "status": "ERROR",
-                    "incident_id": f"error_{int(time.time())}_{event.component}",
-                    "error": f"v3: {e}, v2 fallback: {v2_error}",
+                    "incident_id": f"error_{int(time.time())}_{event.component if event else 'unknown'}",
+                    "error": f"v3: {e}, base fallback: {base_error}",
                     "v3_processing": "failed",
                     "processing_time_ms": (time.time() - start_time) * 1000,
                 }
@@ -358,9 +321,8 @@ class V3ReliabilityEngine(BaseReliabilityEngine):
             "avg_similarity": self._calculate_avg_similarity(similar_incidents),
             "success_rate": self._calculate_success_rate(similar_incidents),
             "component_match": all(
-                incident.component == current_event.component 
+                hasattr(incident, 'component') and incident.component == current_event.component 
                 for incident in similar_incidents
-                if hasattr(incident, 'component')
             ),
         }
         
@@ -569,7 +531,6 @@ class V3ReliabilityEngine(BaseReliabilityEngine):
     def _extract_learning_patterns(self, context: Dict[str, Any]) -> None:
         """Extract learning patterns from context"""
         # Placeholder for pattern extraction logic
-        # In production, this would analyze successful/failed patterns
         logger.debug("Extracting learning patterns from context")
         
         # Example pattern extraction
@@ -582,15 +543,7 @@ class V3ReliabilityEngine(BaseReliabilityEngine):
     
     def get_stats(self) -> Dict[str, Any]:
         """Get comprehensive engine statistics including v3"""
-        base_stats = {
-            "events_processed": self.metrics["events_processed"],
-            "anomalies_detected": self.metrics["anomalies_detected"],
-            "rag_queries": self.metrics["rag_queries"],
-            "mcp_executions": self.metrics["mcp_executions"],
-            "successful_outcomes": self.metrics["successful_outcomes"],
-            "failed_outcomes": self.metrics["failed_outcomes"],
-            "uptime_seconds": time.time() - self._start_time,
-        }
+        base_stats = super().get_stats()
         
         # Add v3 metrics
         with self._v3_lock:
@@ -619,7 +572,7 @@ class V3ReliabilityEngine(BaseReliabilityEngine):
         # Combine stats
         combined_stats: Dict[str, Any] = {
             **base_stats,
-            "engine_version": "v3",
+            "engine_version": "v3_enhanced",
             "v3_features": v3_stats["v3_features_active"],
             "v3_metrics": v3_stats,
             "rag_graph_stats": self.rag.get_graph_stats() if self.rag and hasattr(self.rag, 'get_graph_stats') else None,
@@ -628,17 +581,15 @@ class V3ReliabilityEngine(BaseReliabilityEngine):
         
         return combined_stats
     
-    def get_engine_stats(self) -> Dict[str, Any]:
-        """Alias for get_stats for compatibility"""
-        return self.get_stats()
-    
     def shutdown(self) -> None:
-        """Graceful shutdown of v3 engine"""
+        """Graceful shutdown of enhanced v3 engine"""
         logger.info("Shutting down Enhanced V3ReliabilityEngine...")
         
         # Save any pending learning data
         if getattr(config, 'learning_enabled', False):
             logger.info(f"Saved {self.learning_state['total_learned_patterns']} learning patterns")
+        
+        super().shutdown()
         
         logger.info("Enhanced V3ReliabilityEngine shutdown complete")
 
@@ -649,7 +600,7 @@ def create_v3_engine(
     mcp_server: Optional[MCPServer] = None
 ) -> V3ReliabilityEngine:
     """
-    Factory function to create V3 engine with optional dependencies
+    Factory function to create enhanced V3 engine
     
     Args:
         rag_graph: Optional RAG graph memory
@@ -664,5 +615,5 @@ def create_v3_engine(
             mcp_server=mcp_server
         )
     except Exception as e:
-        logger.exception(f"Error creating V3 engine: {e}")
+        logger.exception(f"Error creating enhanced V3 engine: {e}")
         raise
