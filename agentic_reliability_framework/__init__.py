@@ -10,10 +10,10 @@ from .__version__ import __version__  # runtime import for __version__
 
 __all__ = [
     "__version__",
-    "V2ReliabilityEngine",
     "V3ReliabilityEngine",
     "EnhancedReliabilityEngine",  # Backward compatibility alias
     "ReliabilityEngine",  # Backward compatibility alias
+    "EnhancedV3ReliabilityEngine",  # The actual enhanced v3 engine
     "SimplePredictiveEngine",
     "BusinessImpactCalculator",
     "AdvancedAnomalyDetector",
@@ -26,13 +26,11 @@ __all__ = [
 ]
 
 # Inform static analyzers/types about the exported names without importing modules.
-# We intentionally *don't* import real symbols here (no `from .app import ...`) so we
-# preserve lazy runtime imports and avoid mypy trying to resolve attributes on modules.
 if TYPE_CHECKING:  # pragma: no cover - static-analysis only
-    V2ReliabilityEngine: Any
-    V3ReliabilityEngine: Any
-    EnhancedReliabilityEngine: Any  # Backward compatibility
-    ReliabilityEngine: Any  # Backward compatibility
+    V3ReliabilityEngine: Any  # Base engine from reliability.py
+    EnhancedReliabilityEngine: Any  # Alias for V3ReliabilityEngine
+    ReliabilityEngine: Any  # Factory function from reliability.py
+    EnhancedV3ReliabilityEngine: Any  # Enhanced engine from v3_reliability.py
     SimplePredictiveEngine: Any
     BusinessImpactCalculator: Any
     AdvancedAnomalyDetector: Any
@@ -47,17 +45,15 @@ if TYPE_CHECKING:  # pragma: no cover - static-analysis only
 def __getattr__(name: str) -> Any:
     """
     Lazy-load heavy modules on attribute access using importlib + getattr.
-    This avoids importing heavy modules at package import time and prevents
-    static analyzers from trying to resolve attributes of other modules.
     """
     map_module_attr: dict[str, tuple[str, str]] = {
-        # V2 engine (basic functionality)
-        "V2ReliabilityEngine": (".engine.reliability", "V2ReliabilityEngine"),
+        # Base V3 engine (v2 functionality)
+        "V3ReliabilityEngine": (".engine.reliability", "V3ReliabilityEngine"),
+        "EnhancedReliabilityEngine": (".engine.reliability", "EnhancedReliabilityEngine"),
         "ReliabilityEngine": (".engine.reliability", "ReliabilityEngine"),
         
-        # V3 engine (enhanced with RAG+MCP)
-        "V3ReliabilityEngine": (".engine.v3_reliability", "V3ReliabilityEngine"),
-        "EnhancedReliabilityEngine": (".engine.v3_reliability", "V3ReliabilityEngine"),  # Alias
+        # Enhanced V3 engine (with RAG+MCP)
+        "EnhancedV3ReliabilityEngine": (".engine.v3_reliability", "V3ReliabilityEngine"),
         
         # Other engines
         "SimplePredictiveEngine": (".app", "SimplePredictiveEngine"),
@@ -70,7 +66,7 @@ def __getattr__(name: str) -> Any:
         "get_agents": (".lazy", "get_agents"),
         "get_faiss_index": (".lazy", "get_faiss_index"),
         "get_business_metrics": (".lazy", "get_business_metrics"),
-        "enhanced_engine": (".lazy", "enhanced_engine"),
+        "enhanced_engine": (".lazy", "get_enhanced_reliability_engine"),
     }
 
     entry = map_module_attr.get(name)
@@ -78,12 +74,10 @@ def __getattr__(name: str) -> Any:
         raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
     module_name, attr_name = entry
-    # importlib.import_module returns ModuleType; cast to Any to avoid attribute checks
     module: Any = import_module(module_name, package=__package__)
     try:
         return getattr(module, attr_name)
     except AttributeError as exc:
-        # Preserve a helpful message for runtime debugging
         raise AttributeError(
             f"module {module.__name__!r} has no attribute {attr_name!r}"
         ) from exc
