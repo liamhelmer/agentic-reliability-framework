@@ -59,7 +59,7 @@ class V3ReliabilityEngine:
             "failed_outcomes": 0,
         }
         
-        # Initialize event store directly - FIXED Line 83
+        # Initialize event store directly
         self.event_store = ThreadSafeEventStore()
 
     async def _v2_process(self, event: ReliabilityEvent, *args: Any, **kwargs: Any) -> Dict[str, Any]:
@@ -75,12 +75,20 @@ class V3ReliabilityEngine:
             # Convert severity value to int if needed
             severity_value = event.severity.value if hasattr(event.severity, 'value') else "low"
             severity_numeric: int
+            
+            # FIXED LINE 83: Use explicit type handling to avoid unreachable code
             if isinstance(severity_value, str):
                 # Map string severity to numeric value
                 severity_map = {"low": 1, "medium": 2, "high": 3, "critical": 4}
                 severity_numeric = severity_map.get(severity_value.lower(), 1)
             else:
-                severity_numeric = int(severity_value)
+                # Handle non-string types safely
+                try:
+                    # Try to convert to int
+                    severity_numeric = int(severity_value)
+                except (TypeError, ValueError):
+                    # If conversion fails, default to low severity
+                    severity_numeric = 1
             
             # Basic anomaly detection
             is_anomaly = (
@@ -147,11 +155,19 @@ class V3ReliabilityEngine:
         # Convert severity value to int if needed
         severity_value = event.severity.value if hasattr(event.severity, 'value') else "low"
         severity_numeric: int
+        
+        # FIXED LINE 154: Use explicit type handling to avoid unreachable code
         if isinstance(severity_value, str):
             severity_map = {"low": 1, "medium": 2, "high": 3, "critical": 4}
             severity_numeric = severity_map.get(severity_value.lower(), 1)
         else:
-            severity_numeric = int(severity_value)
+            # Handle non-string types safely
+            try:
+                # Try to convert to int
+                severity_numeric = int(severity_value)
+            except (TypeError, ValueError):
+                # If conversion fails, default to low severity
+                severity_numeric = 1
         
         if severity_numeric >= 3:
             actions.append({
@@ -200,7 +216,7 @@ class V3ReliabilityEngine:
                                 if hasattr(outcome, 'success') and outcome.success:
                                     action_successes[action] = action_successes.get(action, 0) + 1
             
-            # Calculate most common action - FIXED Line 220: No tuple variable
+            # Calculate most common action
             most_common_action: Optional[str] = None
             if action_counts:
                 # Find the action with max count
@@ -305,7 +321,7 @@ class V3ReliabilityEngine:
         similar_incidents: Optional[List[Any]] = None
     ) -> Dict[str, Any]:
         """Record outcome of MCP execution"""
-        # Convert mcp_response to dict - FIXED Line 154: No try-except block
+        # Convert mcp_response to dict
         response_dict: Dict[str, Any]
         if isinstance(mcp_response, MCPResponse):
             response_dict = mcp_response.to_dict()
