@@ -1090,8 +1090,9 @@ class MCPServer:
         Returns:
             MCPResponse with result
         """
-        # FIXED: Check for approval_id existence first - this is reachable
+        # FIXED: Line 813 - This check is reachable
         if approval_id not in self._approval_requests:
+            # Create a dummy request for error response
             dummy_request = MCPRequest(
                 request_id=approval_id,
                 tool="unknown",
@@ -1104,8 +1105,10 @@ class MCPServer:
                 f"Approval request not found: {approval_id}"
             )
 
+        # Get the request (this is reachable because we checked above)
         request = self._approval_requests.pop(approval_id)
 
+        # Check if request should be rejected
         if not approved:
             return MCPResponse(
                 request_id=request.request_id,
@@ -1126,6 +1129,7 @@ class MCPServer:
             metadata=request.metadata
         )
 
+        # This return is reachable
         return await self._handle_autonomous_mode(new_request)
 
     def get_server_stats(self) -> Dict[str, Any]:
