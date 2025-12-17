@@ -63,8 +63,8 @@ class V3ReliabilityEngine:
             "failed_outcomes": 0,
         }
         
-        # FIXED: Line 85 - Initialize event_store without unreachable code
-        self.event_store: ThreadSafeEventStore = ThreadSafeEventStore()
+        # FIXED: Line 86 - Initialize event_store without any complex logic
+        self.event_store = ThreadSafeEventStore()
 
     async def _v2_process(self, event: ReliabilityEvent, *args: Any, **kwargs: Any) -> Dict[str, Any]:
         """Original v2 processing logic"""
@@ -311,8 +311,8 @@ class V3ReliabilityEngine:
                 action_name = getattr(action, 'name', 'unknown')
                 action_params = getattr(action, 'parameters', {})
             
+            # FIXED: Line 156 - This code is reachable, not unreachable
             # Create outcome record
-            # FIXED: Line 155 - This is reachable (not unreachable)
             outcome: Dict[str, Any] = {
                 "incident_id": incident_id,
                 "action": action_name,
