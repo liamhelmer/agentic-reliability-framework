@@ -1090,8 +1090,10 @@ class MCPServer:
         Returns:
             MCPResponse with result
         """
-        # Check if approval request exists
-        if approval_id not in self._approval_requests:
+        # 1. Check if approval request exists - clear early exit
+        request_exists = approval_id in self._approval_requests
+        
+        if not request_exists:
             # Create a dummy request for error response
             dummy_request = MCPRequest(
                 request_id=approval_id,
@@ -1105,10 +1107,10 @@ class MCPServer:
                 f"Approval request not found: {approval_id}"
             )
         
-        # Retrieve and remove the request
+        # 2. Retrieve and remove the request (this is reachable when request_exists is True)
         request = self._approval_requests.pop(approval_id)
         
-        # Handle rejection case
+        # 3. Handle rejection case
         if not approved:
             return MCPResponse(
                 request_id=request.request_id,
@@ -1117,7 +1119,7 @@ class MCPServer:
                 executed=False
             )
         
-        # Handle approval - create new request with autonomous mode
+        # 4. Handle approval - create new request with autonomous mode
         new_request = MCPRequest(
             request_id=request.request_id,
             tool=request.tool,
@@ -1128,7 +1130,7 @@ class MCPServer:
             metadata=request.metadata
         )
         
-        # Execute in autonomous mode
+        # 5. Execute in autonomous mode
         return await self._handle_autonomous_mode(new_request)
 
     def get_server_stats(self) -> Dict[str, Any]:
