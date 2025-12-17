@@ -90,9 +90,9 @@ class EnhancedFAISSIndex:
             
             if actual_k == 0:
                 logger.debug("No vectors in index, returning empty results")
-                empty_distances_result: NDArray[np.float32] = np.array([], dtype=np.float32)
-                empty_indices_result: NDArray[np.int64] = np.array([], dtype=np.int64)
-                return empty_distances_result, empty_indices_result
+                empty_distances: NDArray[np.float32] = np.array([], dtype=np.float32)
+                empty_indices: NDArray[np.int64] = np.array([], dtype=np.int64)
+                return empty_distances, empty_indices
             
             # Perform search
             distances, indices = self.faiss.index.search(query_vector_array, actual_k)
@@ -104,21 +104,22 @@ class EnhancedFAISSIndex:
                 idx_result: NDArray[np.int64] = indices[0].astype(np.int64)
                 
                 # Log search results
-                min_val = np.min(dist_result)
-                min_distance_value: float
-                if isinstance(min_val, np.generic):
-                    min_distance_value = float(min_val.item())
-                elif isinstance(min_val, (int, float)):
-                    min_distance_value = float(min_val)
-                else:
-                    min_distance_value = 0.0
-                    logger.warning(f"Cannot convert type {type(min_val)} to float, using 0.0")
-                
-                logger.debug(
-                    f"FAISS search completed: k={actual_k}, "
-                    f"found={idx_result.size} results, "
-                    f"min_distance={min_distance_value:.4f}"
-                )
+                if dist_result.size > 0:
+                    min_val = np.min(dist_result)
+                    min_distance_value: float
+                    if isinstance(min_val, np.generic):
+                        min_distance_value = float(min_val.item())
+                    elif isinstance(min_val, (int, float)):
+                        min_distance_value = float(min_val)
+                    else:
+                        min_distance_value = 0.0
+                        logger.warning(f"Cannot convert type {type(min_val)} to float, using 0.0")
+                    
+                    logger.debug(
+                        f"FAISS search completed: k={actual_k}, "
+                        f"found={idx_result.size} results, "
+                        f"min_distance={min_distance_value:.4f}"
+                    )
             else:
                 dist_result = np.array([], dtype=np.float32)
                 idx_result = np.array([], dtype=np.int64)
@@ -261,6 +262,7 @@ class EnhancedFAISSIndex:
             if hasattr(self.faiss.index, 'reconstruct_n'):
                 total = self.faiss.get_count()
                 if total == 0:
+                    # Return typed empty array directly
                     return np.zeros((0, MemoryConstants.VECTOR_DIM), dtype=np.float32)
                 
                 # Reconstruct all vectors
@@ -273,7 +275,8 @@ class EnhancedFAISSIndex:
                 
                 # Create the final result
                 if vectors:
-                    return np.vstack(vectors).astype(np.float32)
+                    result: NDArray[np.float32] = np.vstack(vectors).astype(np.float32)
+                    return result
                 else:
                     return np.zeros((0, MemoryConstants.VECTOR_DIM), dtype=np.float32)
             else:
@@ -345,7 +348,8 @@ class EnhancedFAISSIndex:
             distances, indices = self.faiss.index.search(query_vector_array, actual_k)
             
             if indices.size > 0:
-                return indices[0].astype(np.int32)
+                result: NDArray[np.int32] = indices[0].astype(np.int32)
+                return result
             else:
                 return np.array([], dtype=np.int32)
                 
