@@ -1090,10 +1090,12 @@ class MCPServer:
         Returns:
             MCPResponse with result
         """
-        # FIXED: Line 813 - Completely restructured to avoid unreachable code
-        # Check if approval_id exists in a separate step
-        if approval_id not in self._approval_requests:
-            # Early return for not found case
+        # FIXED: Line 813 - Complete restructuring with clear control flow
+        # Check if approval request exists
+        request_exists = approval_id in self._approval_requests
+        
+        if not request_exists:
+            # Early return for missing approval
             dummy_request = MCPRequest(
                 request_id=approval_id,
                 tool="unknown",
@@ -1106,12 +1108,10 @@ class MCPServer:
                 f"Approval request not found: {approval_id}"
             )
         
-        # We know approval_id exists, so get it
-        request = self._approval_requests[approval_id]
-        # Remove it from pending requests
-        del self._approval_requests[approval_id]
+        # Retrieve and remove the request
+        request = self._approval_requests.pop(approval_id)
         
-        # Handle rejection
+        # Handle rejection case
         if not approved:
             return MCPResponse(
                 request_id=request.request_id,
@@ -1120,7 +1120,7 @@ class MCPServer:
                 executed=False
             )
         
-        # Handle approval - execute the request with autonomous mode
+        # Handle approval - create new request with autonomous mode
         new_request = MCPRequest(
             request_id=request.request_id,
             tool=request.tool,
@@ -1131,7 +1131,7 @@ class MCPServer:
             metadata=request.metadata
         )
         
-        # This return is definitely reachable
+        # Execute in autonomous mode
         return await self._handle_autonomous_mode(new_request)
 
     def get_server_stats(self) -> Dict[str, Any]:
