@@ -1090,7 +1090,8 @@ class MCPServer:
         Returns:
             MCPResponse with result
         """
-        # FIXED: Line 813 - This check is reachable
+        # FIXED: Line 813 - Clearer control flow
+        # First, handle the case where approval_id is not found
         if approval_id not in self._approval_requests:
             # Create a dummy request for error response
             dummy_request = MCPRequest(
@@ -1105,7 +1106,7 @@ class MCPServer:
                 f"Approval request not found: {approval_id}"
             )
 
-        # Get the request (this is reachable because we checked above)
+        # Get the request (this code is reachable when approval_id exists)
         request = self._approval_requests.pop(approval_id)
 
         # Check if request should be rejected
