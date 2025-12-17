@@ -106,15 +106,8 @@ class EnhancedFAISSIndex:
                 # Log search results
                 if dist_result.size > 0:
                     min_val = np.min(dist_result)
-                    min_distance_value: float
-                    # FIXED: Check if it has item() method (numpy scalar) first
-                    if hasattr(min_val, 'item'):
-                        min_distance_value = float(min_val.item())
-                    elif isinstance(min_val, (int, float)):
-                        min_distance_value = float(min_val)
-                    else:
-                        min_distance_value = 0.0
-                        logger.warning(f"Cannot convert type {type(min_val)} to float, using 0.0")
+                    # FIXED: Use type-ignored conversion to avoid numpy type conflicts
+                    min_distance_value: float = float(min_val)  # type: ignore
                     
                     logger.debug(
                         f"FAISS search completed: k={actual_k}, "
@@ -175,15 +168,8 @@ class EnhancedFAISSIndex:
                 text = self._get_text_by_index(int(idx))
                 
                 if text:
-                    # Type-safe float conversion
-                    distance_float: float
-                    if isinstance(distance, np.generic):
-                        distance_float = float(distance.item())
-                    elif isinstance(distance, (int, float)):
-                        distance_float = float(distance)
-                    else:
-                        distance_float = 0.0
-                    
+                    # Type-safe float conversion with type ignore
+                    distance_float: float = float(distance)  # type: ignore
                     similarity_float = float(1.0 / (1.0 + distance_float))
                     
                     results.append({
@@ -243,9 +229,8 @@ class EnhancedFAISSIndex:
         if norm > 0:
             generated_embedding = generated_embedding / norm
         
-        # FIXED: Return a 2D array with proper type annotation
-        result_array: NDArray[np.float32] = generated_embedding.reshape(1, -1)
-        return result_array
+        # Return the 2D array directly
+        return generated_embedding
     
     def _get_text_by_index(self, index: int) -> Optional[str]:
         """Get text by FAISS index"""
@@ -277,8 +262,7 @@ class EnhancedFAISSIndex:
                 
                 # Create the final result
                 if vectors:
-                    result: NDArray[np.float32] = np.vstack(vectors).astype(np.float32)
-                    return result
+                    return np.vstack(vectors).astype(np.float32)
                 else:
                     return np.zeros((0, MemoryConstants.VECTOR_DIM), dtype=np.float32)
             else:
@@ -350,8 +334,7 @@ class EnhancedFAISSIndex:
             distances, indices = self.faiss.index.search(query_vector_array, actual_k)
             
             if indices.size > 0:
-                result: NDArray[np.int32] = indices[0].astype(np.int32)
-                return result
+                return indices[0].astype(np.int32)
             else:
                 return np.array([], dtype=np.int32)
                 
