@@ -794,34 +794,52 @@ class MCPServer:
 
     def _validate_request(self, request: MCPRequest) -> Dict[str, Any]:
         """Validate MCP request"""
+        # Initialize with empty lists
         errors: List[str] = []
-
+        warnings: List[str] = []
+        
+        # Perform all validations
+        self._perform_validations(request, errors, warnings)
+        
+        # Always return a result
+        return self._create_validation_result(errors, warnings)
+    
+    def _perform_validations(
+        self, 
+        request: MCPRequest, 
+        errors: List[str], 
+        warnings: List[str]
+    ) -> None:
+        """Perform individual validations"""
         # Check if tool exists
         if request.tool not in self.registered_tools:
             errors.append(f"Unknown tool: {request.tool}")
-
+        
         # Check component
         if not request.component:
             errors.append("Component name is required")
         elif len(request.component) > 255:
             errors.append("Component name too long (max 255 characters)")
-
+        
         # Check justification
         if len(request.justification) < 10:
             errors.append("Justification too short (min 10 characters)")
-
+        
         # Check parameters
         if not isinstance(request.parameters, dict):
             errors.append("Parameters must be a dictionary")
-
-        # Always return a result - no early returns
-        result: Dict[str, Any] = {
+    
+    def _create_validation_result(
+        self, 
+        errors: List[str], 
+        warnings: List[str]
+    ) -> Dict[str, Any]:
+        """Create validation result dictionary"""
+        return {
             "valid": len(errors) == 0,
             "errors": errors,
-            "warnings": []
+            "warnings": warnings
         }
-        
-        return result
 
     def _check_permissions(self, request: MCPRequest) -> bool:
         """Check permissions for request"""
