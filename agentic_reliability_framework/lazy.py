@@ -18,20 +18,6 @@ _BUSINESS_METRICS: Any = None
 _RAG_GRAPH: Any = None
 _MCP_SERVER: Any = None
 
-# === Helper functions ===
-def _safe_import(module_name: str, class_name: str) -> Optional[Any]:
-    """Safely import a class with error handling"""
-    try:
-        module = __import__(module_name, fromlist=[class_name])
-        return getattr(module, class_name)
-    except ImportError as e:
-        logger.error(f"Failed to import {class_name} from {module_name}: {e}")
-        return None
-    except AttributeError as e:
-        logger.error(f"Class {class_name} not found in {module_name}: {e}")
-        return None
-
-
 # === Lazy getters ===
 def get_engine() -> Any:
     """Get or create the main reliability engine"""
