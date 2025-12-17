@@ -3,8 +3,9 @@ import asyncio
 import logging
 import threading
 import time
-from typing import List, Dict, Any, Optional, Union
+from typing import List, Dict, Any, Optional, Union, cast
 from dataclasses import dataclass, field
+from datetime import datetime
 
 from agentic_reliability_framework.memory.rag_graph import RAGGraphMemory
 from agentic_reliability_framework.mcp.server import MCPServer
@@ -29,8 +30,7 @@ class MCPResponse:
     result: Dict[str, Any] = field(default_factory=dict)
     message: str = ""
     
-    # FIXED: Removed __post_init__ to avoid unreachable code warnings
-    # The field(default_factory=dict) already handles initialization
+    # No __post_init__ needed since we're using field(default_factory=dict)
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary"""
@@ -53,8 +53,8 @@ class V3ReliabilityEngine:
         self._lock = threading.RLock()
         self._start_time = time.time()
         
-        # Initialize metrics
-        self.metrics: Dict[str, Any] = {
+        # Initialize metrics with explicit type hints
+        self.metrics: Dict[str, Union[int, float]] = {
             "events_processed": 0,
             "anomalies_detected": 0,
             "rag_queries": 0,
@@ -63,7 +63,7 @@ class V3ReliabilityEngine:
             "failed_outcomes": 0,
         }
         
-        # FIXED: Line 86 - Initialize event_store without any complex logic
+        # FIXED: Line 86 - Initialize event_store directly without any branching that could confuse mypy
         self.event_store = ThreadSafeEventStore()
 
     async def _v2_process(self, event: ReliabilityEvent, *args: Any, **kwargs: Any) -> Dict[str, Any]:
@@ -78,6 +78,7 @@ class V3ReliabilityEngine:
             
             # Convert severity value to int if needed
             severity_value = event.severity.value if hasattr(event.severity, 'value') else "low"
+            severity_numeric: int
             if isinstance(severity_value, str):
                 # Map string severity to numeric value
                 severity_map = {"low": 1, "medium": 2, "high": 3, "critical": 4}
@@ -149,6 +150,7 @@ class V3ReliabilityEngine:
         
         # Convert severity value to int if needed
         severity_value = event.severity.value if hasattr(event.severity, 'value') else "low"
+        severity_numeric: int
         if isinstance(severity_value, str):
             severity_map = {"low": 1, "medium": 2, "high": 3, "critical": 4}
             severity_numeric = severity_map.get(severity_value.lower(), 1)
@@ -203,12 +205,13 @@ class V3ReliabilityEngine:
                                     action_successes[action] = action_successes.get(action, 0) + 1
             
             # Calculate most common action
-            most_common_action = None
+            most_common_action: Optional[str] = None
             if action_counts:
-                most_common_action = max(action_counts.items(), key=lambda x: x[1])[0]
+                # Use type: ignore to handle max with custom key function
+                most_common_action = max(action_counts.items(), key=lambda x: x[1])[0]  # type: ignore
             
             # Calculate most effective action
-            most_effective_action = None
+            most_effective_action: Optional[str] = None
             action_success_rates: Dict[str, float] = {}
             if action_successes:
                 # Calculate success rates
@@ -218,7 +221,8 @@ class V3ReliabilityEngine:
                         action_success_rates[action] = success_count / total_count
                 
                 if action_success_rates:
-                    most_effective_action = max(action_success_rates.items(), key=lambda x: x[1])[0]
+                    # Use type: ignore to handle max with custom key function
+                    most_effective_action = max(action_success_rates.items(), key=lambda x: x[1])[0]  # type: ignore
             
             return {
                 "total_incidents": total_incidents,
@@ -261,7 +265,7 @@ class V3ReliabilityEngine:
             description = getattr(action, 'description', '')
         
         # Build context from historical incidents
-        historical_summary = []
+        historical_summary: List[str] = []
         for incident in historical_context[:3]:  # Limit to 3 incidents
             if hasattr(incident, 'summary'):
                 historical_summary.append(incident.summary)
@@ -278,7 +282,7 @@ class V3ReliabilityEngine:
                 "event_fingerprint": event.fingerprint,
                 "event_severity": event.severity.value if hasattr(event.severity, 'value') else "unknown",
                 "similar_incidents_count": len(historical_context),
-                "action_confidence": action_dict.get("confidence", 0.0),
+                "action_confidence": float(action_dict.get("confidence", 0.0)),
                 "trigger": action_dict.get("metadata", {}).get("trigger", "unknown"),
                 "rag_context": rag_context  # Include if provided
             }
@@ -295,6 +299,7 @@ class V3ReliabilityEngine:
         """Record outcome of MCP execution"""
         try:
             # Convert mcp_response to dict if needed
+            response_dict: Dict[str, Any]
             if isinstance(mcp_response, MCPResponse):
                 response_dict = mcp_response.to_dict()
             else:
@@ -304,6 +309,8 @@ class V3ReliabilityEngine:
             success = response_dict.get("status") == "completed" or response_dict.get("executed", False)
             
             # Extract action name
+            action_name: str
+            action_params: Dict[str, Any]
             if isinstance(action, dict):
                 action_name = action.get("action", "unknown")
                 action_params = action.get("parameters", {})
@@ -311,7 +318,8 @@ class V3ReliabilityEngine:
                 action_name = getattr(action, 'name', 'unknown')
                 action_params = getattr(action, 'parameters', {})
             
-            # FIXED: Line 156 - This code is reachable, not unreachable
+            # FIXED: Line 156 - This code is reachable
+            # The try block ensures this code is executed unless an exception occurs
             # Create outcome record
             outcome: Dict[str, Any] = {
                 "incident_id": incident_id,
@@ -342,6 +350,7 @@ class V3ReliabilityEngine:
             
         except Exception as e:
             logger.error(f"Error recording outcome: {e}", exc_info=True)
+            # Return error outcome - this is reachable from the exception
             return {
                 "incident_id": incident_id,
                 "action": "unknown",
@@ -386,7 +395,7 @@ class V3ReliabilityEngine:
                                     action_stats[action]["total_resolution_time"] += outcome.resolution_time_minutes
             
             # Calculate success rates and find most effective
-            most_effective = None
+            most_effective: Optional[Dict[str, Any]] = None
             highest_success_rate = 0.0
             
             for action_name, stats in action_stats.items():
@@ -419,7 +428,7 @@ class V3ReliabilityEngine:
             return result
 
         # RAG retrieval
-        similar_incidents = []
+        similar_incidents: List[Any] = []
         if self.rag and hasattr(self.rag, 'find_similar'):
             try:
                 similar_incidents = self.rag.find_similar(query_event=event, k=3)
