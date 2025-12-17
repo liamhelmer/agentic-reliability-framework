@@ -541,9 +541,26 @@ class V3ReliabilityEngine(BaseV3Engine):
         if similar_count > 0 and action.get("historical_effectiveness", 0) > 0.7:
             logger.info(f"Learned pattern: Action {action.get('action')} effective with historical context")
     
+# In v3_reliability.py, update the get_stats and shutdown methods:
+
     def get_stats(self) -> Dict[str, Any]:
         """Get comprehensive engine statistics including v3"""
-        base_stats = super().get_stats()
+        try:
+            # Try to get base stats from superclass
+            base_stats = super().get_stats()
+        except AttributeError:
+            # Fallback if base class doesn't have get_stats
+            logger.warning("Base class doesn't have get_stats, using fallback")
+            base_stats = {
+                "events_processed": self.metrics.get("events_processed", 0),
+                "anomalies_detected": self.metrics.get("anomalies_detected", 0),
+                "rag_queries": self.metrics.get("rag_queries", 0),
+                "mcp_executions": self.metrics.get("mcp_executions", 0),
+                "successful_outcomes": self.metrics.get("successful_outcomes", 0),
+                "failed_outcomes": self.metrics.get("failed_outcomes", 0),
+                "uptime_seconds": time.time() - self._start_time,
+                "engine_version": "v3_base_fallback",
+            }
         
         # Add v3 metrics
         with self._v3_lock:
@@ -589,7 +606,12 @@ class V3ReliabilityEngine(BaseV3Engine):
         if getattr(config, 'learning_enabled', False):
             logger.info(f"Saved {self.learning_state['total_learned_patterns']} learning patterns")
         
-        super().shutdown()
+        try:
+            # Try to call super().shutdown() if it exists
+            super().shutdown()
+        except AttributeError:
+            # Base class doesn't have shutdown, just log
+            logger.debug("Base class doesn't have shutdown method")
         
         logger.info("Enhanced V3ReliabilityEngine shutdown complete")
 
