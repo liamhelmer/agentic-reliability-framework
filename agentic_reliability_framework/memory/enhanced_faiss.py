@@ -106,8 +106,9 @@ class EnhancedFAISSIndex:
                 dist_result = np.array([], dtype=np.float32)
                 idx_result = np.array([], dtype=np.int64)
             
-            # FIXED: Line 117 - Add type ignore for mypy confusion
-            if dist_result.size > 0:  # type: ignore
+            # FIXED: Line 116 - Use explicit boolean variable
+            has_some_results = bool(dist_result.size > 0)
+            if has_some_results:
                 min_val = np.min(dist_result)
                 # Convert numpy scalar to Python float safely
                 min_distance_value: float
@@ -264,8 +265,9 @@ class EnhancedFAISSIndex:
             if hasattr(self.faiss.index, 'reconstruct_n'):
                 total = self.faiss.get_count()
                 if total == 0:
-                    # FIXED: Line 248 - Return with explicit type annotation
-                    return np.zeros((0, MemoryConstants.VECTOR_DIM), dtype=np.float32)
+                    # FIXED: Line 247 - Return typed empty array
+                    empty_result: NDArray[np.float32] = np.zeros((0, MemoryConstants.VECTOR_DIM), dtype=np.float32)
+                    return empty_result
                 
                 # Reconstruct all vectors
                 vectors: List[NDArray[np.float32]] = []
@@ -277,16 +279,20 @@ class EnhancedFAISSIndex:
                 
                 # Create the final result
                 if vectors:
-                    return np.vstack(vectors).astype(np.float32)
+                    final_result: NDArray[np.float32] = np.vstack(vectors).astype(np.float32)
+                    return final_result
                 else:
-                    return np.zeros((0, MemoryConstants.VECTOR_DIM), dtype=np.float32)
+                    empty_result: NDArray[np.float32] = np.zeros((0, MemoryConstants.VECTOR_DIM), dtype=np.float32)
+                    return empty_result
             else:
                 # If reconstruction is not available, return empty array
                 logger.warning("FAISS index does not support reconstruct_n, returning empty array")
-                return np.zeros((0, MemoryConstants.VECTOR_DIM), dtype=np.float32)
+                empty_result: NDArray[np.float32] = np.zeros((0, MemoryConstants.VECTOR_DIM), dtype=np.float32)
+                return empty_result
         except Exception as e:
             logger.error(f"Error getting embeddings: {e}")
-            return np.zeros((0, MemoryConstants.VECTOR_DIM), dtype=np.float32)
+            empty_result: NDArray[np.float32] = np.zeros((0, MemoryConstants.VECTOR_DIM), dtype=np.float32)
+            return empty_result
     
     def get_text_by_index(self, index: int) -> Optional[str]:
         """
@@ -341,22 +347,25 @@ class EnhancedFAISSIndex:
             # Get number of vectors in index
             ntotal = self.faiss.index.ntotal if hasattr(self.faiss.index, 'ntotal') else 0
             
-            # FIXED: Line 335 - Simplify control flow
+            # FIXED: Line 334 - Clear early return
             if ntotal == 0:
-                # Return empty array when no vectors
-                return np.array([], dtype=np.int32)
+                empty_result: NDArray[np.int32] = np.array([], dtype=np.int32)
+                return empty_result
             
             # This code is reachable when ntotal > 0
             actual_k = min(k, ntotal)
             distances, indices = self.faiss.index.search(query_vector_array, actual_k)
             
-            # Explicit return type
+            # FIXED: Line 355 - Explicit type annotation
             if indices.size > 0:
-                return indices[0].astype(np.int32)
+                result: NDArray[np.int32] = indices[0].astype(np.int32)
+                return result
             else:
-                return np.array([], dtype=np.int32)
+                empty_result: NDArray[np.int32] = np.array([], dtype=np.int32)
+                return empty_result
                 
         except Exception as e:
             logger.error(f"Error searching vectors: {e}")
             # Consistent return type on error
-            return np.array([], dtype=np.int32)
+            empty_result: NDArray[np.int32] = np.array([], dtype=np.int32)
+            return empty_result
