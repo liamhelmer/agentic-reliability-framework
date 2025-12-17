@@ -90,9 +90,9 @@ class EnhancedFAISSIndex:
             
             if actual_k == 0:
                 logger.debug("No vectors in index, returning empty results")
-                empty_distances: NDArray[np.float32] = np.array([], dtype=np.float32)
-                empty_indices: NDArray[np.int64] = np.array([], dtype=np.int64)
-                return empty_distances, empty_indices
+                empty_distances_result: NDArray[np.float32] = np.array([], dtype=np.float32)
+                empty_indices_result: NDArray[np.int64] = np.array([], dtype=np.int64)
+                return empty_distances_result, empty_indices_result
             
             # Perform search
             distances, indices = self.faiss.index.search(query_vector_array, actual_k)
@@ -261,8 +261,7 @@ class EnhancedFAISSIndex:
             if hasattr(self.faiss.index, 'reconstruct_n'):
                 total = self.faiss.get_count()
                 if total == 0:
-                    empty_array: NDArray[np.float32] = np.zeros((0, MemoryConstants.VECTOR_DIM), dtype=np.float32)
-                    return empty_array
+                    return np.zeros((0, MemoryConstants.VECTOR_DIM), dtype=np.float32)
                 
                 # Reconstruct all vectors
                 vectors: List[NDArray[np.float32]] = []
@@ -274,20 +273,16 @@ class EnhancedFAISSIndex:
                 
                 # Create the final result
                 if vectors:
-                    final_result: NDArray[np.float32] = np.vstack(vectors).astype(np.float32)
-                    return final_result
+                    return np.vstack(vectors).astype(np.float32)
                 else:
-                    empty_array: NDArray[np.float32] = np.zeros((0, MemoryConstants.VECTOR_DIM), dtype=np.float32)
-                    return empty_array
+                    return np.zeros((0, MemoryConstants.VECTOR_DIM), dtype=np.float32)
             else:
                 # If reconstruction is not available, return empty array
                 logger.warning("FAISS index does not support reconstruct_n, returning empty array")
-                empty_array: NDArray[np.float32] = np.zeros((0, MemoryConstants.VECTOR_DIM), dtype=np.float32)
-                return empty_array
+                return np.zeros((0, MemoryConstants.VECTOR_DIM), dtype=np.float32)
         except Exception as e:
             logger.error(f"Error getting embeddings: {e}")
-            empty_array: NDArray[np.float32] = np.zeros((0, MemoryConstants.VECTOR_DIM), dtype=np.float32)
-            return empty_array
+            return np.zeros((0, MemoryConstants.VECTOR_DIM), dtype=np.float32)
     
     def get_text_by_index(self, index: int) -> Optional[str]:
         """
@@ -343,22 +338,17 @@ class EnhancedFAISSIndex:
             ntotal = self.faiss.index.ntotal if hasattr(self.faiss.index, 'ntotal') else 0
             
             if ntotal == 0:
-                empty_array: NDArray[np.int32] = np.array([], dtype=np.int32)
-                return empty_array
+                return np.array([], dtype=np.int32)
             
             # This code is reachable when ntotal > 0
             actual_k = min(k, ntotal)
             distances, indices = self.faiss.index.search(query_vector_array, actual_k)
             
             if indices.size > 0:
-                result: NDArray[np.int32] = indices[0].astype(np.int32)
-                return result
+                return indices[0].astype(np.int32)
             else:
-                empty_array: NDArray[np.int32] = np.array([], dtype=np.int32)
-                return empty_array
+                return np.array([], dtype=np.int32)
                 
         except Exception as e:
             logger.error(f"Error searching vectors: {e}")
-            # Consistent return type on error
-            empty_array: NDArray[np.int32] = np.array([], dtype=np.int32)
-            return empty_array
+            return np.array([], dtype=np.int32)
