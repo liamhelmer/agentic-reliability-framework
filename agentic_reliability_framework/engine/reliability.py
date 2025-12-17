@@ -76,19 +76,17 @@ class V3ReliabilityEngine:
             severity_value = event.severity.value if hasattr(event.severity, 'value') else "low"
             severity_numeric: int
             
-            # FIXED LINE 83: Use explicit type handling to avoid unreachable code
+            # FIXED: Simplified logic to avoid unreachable code
             if isinstance(severity_value, str):
                 # Map string severity to numeric value
                 severity_map = {"low": 1, "medium": 2, "high": 3, "critical": 4}
                 severity_numeric = severity_map.get(severity_value.lower(), 1)
+            elif isinstance(severity_value, (int, float)):
+                # Handle numeric types directly
+                severity_numeric = int(severity_value)
             else:
-                # Handle non-string types safely
-                try:
-                    # Try to convert to int
-                    severity_numeric = int(severity_value)
-                except (TypeError, ValueError):
-                    # If conversion fails, default to low severity
-                    severity_numeric = 1
+                # Default for any other type
+                severity_numeric = 1
             
             # Basic anomaly detection
             is_anomaly = (
@@ -156,18 +154,16 @@ class V3ReliabilityEngine:
         severity_value = event.severity.value if hasattr(event.severity, 'value') else "low"
         severity_numeric: int
         
-        # FIXED LINE 154: Use explicit type handling to avoid unreachable code
+        # FIXED: Simplified logic to avoid unreachable code
         if isinstance(severity_value, str):
             severity_map = {"low": 1, "medium": 2, "high": 3, "critical": 4}
             severity_numeric = severity_map.get(severity_value.lower(), 1)
+        elif isinstance(severity_value, (int, float)):
+            # Handle numeric types directly
+            severity_numeric = int(severity_value)
         else:
-            # Handle non-string types safely
-            try:
-                # Try to convert to int
-                severity_numeric = int(severity_value)
-            except (TypeError, ValueError):
-                # If conversion fails, default to low severity
-                severity_numeric = 1
+            # Default for any other type
+            severity_numeric = 1
         
         if severity_numeric >= 3:
             actions.append({
