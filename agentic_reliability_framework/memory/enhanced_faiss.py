@@ -5,7 +5,7 @@ Adds search capability to existing ProductionFAISSIndex
 
 import numpy as np
 import logging
-from typing import List, Dict, Any, Optional, Tuple, Union, cast
+from typing import List, Dict, Any, Optional, Tuple, Union
 import asyncio
 from numpy.typing import NDArray
 
@@ -106,8 +106,10 @@ class EnhancedFAISSIndex:
                 dist_result = np.array([], dtype=np.float32)
                 idx_result = np.array([], dtype=np.int64)
             
-            # FIXED: Line 115 - This code is reachable when len(dist_result) > 0
-            if dist_result.size > 0:  # Changed from len() to .size for numpy arrays
+            # FIXED: Line 116 - This is reachable when dist_result.size > 0
+            # Use a different approach to avoid mypy confusion
+            has_results = dist_result.size > 0
+            if has_results:
                 min_val = np.min(dist_result)
                 # Convert numpy scalar to Python float safely
                 min_distance_value: float
@@ -161,7 +163,7 @@ class EnhancedFAISSIndex:
         """
         try:
             # Embed the query text
-            query_embedding = self._embed_text(query_text)  # Renamed to avoid redefinition
+            query_embedding = self._embed_text(query_text)
             
             # Search for similar vectors
             distances, indices = self.search(query_embedding, k)
@@ -212,7 +214,6 @@ class EnhancedFAISSIndex:
     def _embed_text(self, text: str) -> NDArray[np.float32]:
         """Embed text into vector"""
         # Use existing embedding model or create simple embedding
-        # FIXED: Line 239 - Removed duplicate 'embedding' variable
         try:
             # Try to use existing embedding model
             if hasattr(self.faiss, '_encoder_pool'):
@@ -227,9 +228,9 @@ class EnhancedFAISSIndex:
                     )
                 )
                 return np.array(encoded_embedding, dtype=np.float32)
-        except Exception as e:
-            logger.debug(f"Could not use embedding model: {e}")
+        except Exception:
             # Continue to fallback
+            pass
         
         # Fallback: create simple embedding from text hash
         # This is for development only - in production use proper embedding model
@@ -265,11 +266,8 @@ class EnhancedFAISSIndex:
             if hasattr(self.faiss.index, 'reconstruct_n'):
                 total = self.faiss.get_count()
                 if total == 0:
-                    # FIXED: Line 246 - Explicit return type
-                    empty_result: NDArray[np.float32] = np.array(
-                        [], dtype=np.float32
-                    ).reshape(0, MemoryConstants.VECTOR_DIM)
-                    return empty_result
+                    # FIXED: Line 248 - Return empty array with proper typing
+                    return np.zeros((0, MemoryConstants.VECTOR_DIM), dtype=np.float32)
                 
                 # Reconstruct all vectors
                 vectors: List[NDArray[np.float32]] = []
@@ -285,20 +283,16 @@ class EnhancedFAISSIndex:
                 
                 # Create the final result
                 if vectors:
-                    final_embeddings: NDArray[np.float32] = np.vstack(vectors).astype(np.float32)
-                    return final_embeddings
+                    return np.vstack(vectors).astype(np.float32)
                 else:
-                    empty_array: NDArray[np.float32] = np.array(
-                        [], dtype=np.float32
-                    ).reshape(0, MemoryConstants.VECTOR_DIM)
-                    return empty_array
+                    return np.zeros((0, MemoryConstants.VECTOR_DIM), dtype=np.float32)
             else:
                 # If reconstruction is not available, return empty array
                 logger.warning("FAISS index does not support reconstruct_n, returning empty array")
-                return np.array([], dtype=np.float32).reshape(0, MemoryConstants.VECTOR_DIM)
+                return np.zeros((0, MemoryConstants.VECTOR_DIM), dtype=np.float32)
         except Exception as e:
             logger.error(f"Error getting embeddings: {e}")
-            return np.array([], dtype=np.float32).reshape(0, MemoryConstants.VECTOR_DIM)
+            return np.zeros((0, MemoryConstants.VECTOR_DIM), dtype=np.float32)
     
     def get_text_by_index(self, index: int) -> Optional[str]:
         """
@@ -353,23 +347,19 @@ class EnhancedFAISSIndex:
             # Get number of vectors in index
             ntotal = self.faiss.index.ntotal if hasattr(self.faiss.index, 'ntotal') else 0
             
-            # FIXED: Line 344 - Clear control flow
+            # FIXED: Line 346 - Clear control flow
             if ntotal == 0:
                 # Return empty array when no vectors
                 return np.array([], dtype=np.int32)
             
-            actual_k = min(k, ntotal) if ntotal > 0 else 0
-            
             # This code is reachable when ntotal > 0
+            actual_k = min(k, ntotal)
             distances, indices = self.faiss.index.search(query_vector_array, actual_k)
             
             # Explicitly return int32 array to match declared return type
             if indices.size > 0:
-                # Use .astype() for explicit type conversion
-                search_result: NDArray[np.int32] = indices[0].astype(np.int32)
-                return search_result
+                return indices[0].astype(np.int32)
             else:
-                # Return empty array with explicit dtype
                 return np.array([], dtype=np.int32)
                 
         except Exception as e:
