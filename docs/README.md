@@ -24,15 +24,10 @@
 🧠 Agentic Reliability Framework (ARF) v3.0
 ===========================================
 
-**ARF is the first enterprise framework that enables autonomous, self-healing, context-aware AI agents for infrastructure reliability monitoring and remediation at scale.
+**ARF is the first enterprise framework that enables autonomous, self-healing, context-aware AI agents for infrastructure reliability monitoring and remediation at scale.**
 
-"Traditional monitoring tells you what broke. ARF prevents it from breaking in the first place, then fixes it if it does."**
+"Traditional monitoring tells you what broke. ARF prevents it from breaking in the first place, then fixes it if it does."
 
-https://img.shields.io/badge/python-3.10%252B-blue
-https://img.shields.io/badge/pypi-v2.0.2-green
-https://img.shields.io/badge/License-MIT-yellow.svg
-https://img.shields.io/badge/code%2520style-black-000000.svg
-https://img.shields.io/badge/type%2520checked-mypy-blue
     
 📋 Table of Contents
 --------------------
