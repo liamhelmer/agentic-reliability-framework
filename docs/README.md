@@ -220,7 +220,7 @@ graph TB
 
 ### **Component Deep Dive**
 
-#### **1\. EnhancedV3ReliabilityEngine** (engine/v3\_reliability.py)
+#### **1\. EnhancedV3ReliabilityEngine** 
 
 **The Central Orchestrator** that coordinates all components into a unified workflow.
 
@@ -243,7 +243,7 @@ graph TB
 8.  **Business Impact Calculation** - Revenue and user impact quantification
     
 
-#### **2\. RAG Graph Memory** (memory/rag\_graph.py)
+#### **2\. RAG Graph Memory**
 
 **Not Just Vector Search** - A knowledge graph connecting incidents to outcomes with semantic understanding.
 
@@ -262,7 +262,7 @@ graph TB
 *   **Thread-Safe Operations**: RLock-protected transactions for concurrent access
     
 
-#### **3\. MCP Server** (engine/mcp\_server.py)
+#### **3\. MCP Server** 
 
 **Safe Execution Boundary** with Model Context Protocol implementation and three operational modes.
 
@@ -285,7 +285,7 @@ graph TB
 *   **Business Hour Restrictions**: Avoids risky changes during peak hours
     
 
-#### **4\. Policy Engine** (healing\_policies.py)
+#### **4\. Policy Engine** 
 
 **Deterministic Rules** for fast, reliable response to known failure patterns.
 
@@ -306,7 +306,7 @@ graph TB
 *   **Extensible Conditions**: Support for gt, lt, eq, gte, lte operators
     
 
-#### **5\. Multi-Agent System** (app.py)
+#### **5\. Multi-Agent System** 
 
 **Specialized AI Agents** working in concert through orchestrated collaboration.
 
