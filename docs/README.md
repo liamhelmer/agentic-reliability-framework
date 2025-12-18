@@ -33,7 +33,7 @@
 - [🎯 Executive Summary](#-executive-summary)
 - [⚖️ Why Choose ARF Over Alternatives](#-why-choose-arf-over-alternatives)
 - [🏗️ Core Architecture](#-core-architecture)
-- [💰 Business Value and ROI](#-business-value--roi)
+- [💰 Business Value and ROI](#-business-value-and-roi)
 - [🏢 Industry Applications](#-industry-applications)
 - [🚀 Quick Start (5 Minutes)](#-quick-start-5-minutes)
 - [🔒 Security & Compliance](#-security--compliance)
@@ -46,8 +46,8 @@
 
 ---
 
-**📌 Quick Jump:**
-[🚀 Get Started Now](#-quick-start-5-minutes) • [💰 See Business Value](#-business-value--roi) • [🔒 Review Security](#-security--compliance) • [📞 Contact Us](#-contact--support)
+**📌 Quick Jump:**  
+[🚀 Get Started Now](#-quick-start-5-minutes) • [💰 See Business Value](#-business-value-and-roi) • [🔒 Review Security](#-security--compliance) • [📞 Contact Us](#-contact--support)
 
 ## 🎯 Executive Summary
 ------------------------------------------------
