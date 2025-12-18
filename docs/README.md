@@ -1220,5 +1220,5 @@ https://api.star-history.com/svg?repos=petterjuan/agentic-reliability-framework&
 ⭐ If ARF v3 helps you, please consider giving it a star on GitHub!
 It helps others discover production-ready AI reliability patterns.
 
-Built with ❤️ by LGCY Labs
+Built with ❤️ by **[LGCY Labs](https://lgcylabs.vercel.app/)** 
 Making AI reliable, one system at a time
