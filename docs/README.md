@@ -995,7 +995,7 @@ export SAFETY_MAX_BLAST_RADIUS=3
 export MCP_MODE=approval
 export AUDIT_RETENTION_DAYS=30
 export BUSINESS_HOURS_START=09:00
-export BUSINESS_HOURS_END=17💯
+export BUSINESS_HOURS_END=17:00
 ```
 ### **Recommended Implementation Order**
 
