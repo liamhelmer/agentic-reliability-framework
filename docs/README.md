@@ -1058,27 +1058,27 @@ OperationLatency (p99)ThroughputMemory**Event Processing**1.8s550 req/s45MB**RAG
 
 ### **General Questions**
 
-**Q: Is ARF production-ready?**A: Yes, ARF is built with production requirements: thread safety, circuit breakers, graceful degradation, comprehensive testing, and security patches.
+**Q: Is ARF production-ready?** A: Yes, ARF is built with production requirements: thread safety, circuit breakers, graceful degradation, comprehensive testing, and security patches.
 
-**Q: What's the difference between ARF and traditional monitoring?**A: Traditional monitoring alerts you when something breaks. ARF prevents things from breaking, learns from past incidents, and autonomously fixes issues when they occur.
+**Q: What's the difference between ARF and traditional monitoring?** A: Traditional monitoring alerts you when something breaks. ARF prevents things from breaking, learns from past incidents, and autonomously fixes issues when they occur.
 
-**Q: Do I need ML expertise to use ARF?**A: No, ARF provides sensible defaults and pre-trained models. Advanced configuration is available but not required.
+**Q: Do I need ML expertise to use ARF?** A: No, ARF provides sensible defaults and pre-trained models. Advanced configuration is available but not required.
 
 ### **Technical Questions**
 
-**Q: How does ARF handle data privacy?**A: All data processing happens locally by default. Vector embeddings are generated locally using sentence-transformers. Cloud APIs are optional and configurable.
+**Q: How does ARF handle data privacy?** A: All data processing happens locally by default. Vector embeddings are generated locally using sentence-transformers. Cloud APIs are optional and configurable.
 
-**Q: Can I use ARF with existing monitoring tools?**A: Yes, ARF integrates via its API. You can send events from Datadog, New Relic, Prometheus, or custom systems.
+**Q: Can I use ARF with existing monitoring tools?** A: Yes, ARF integrates via its API. You can send events from Datadog, New Relic, Prometheus, or custom systems.
 
-**Q: What's the performance impact on my systems?**A: Minimal. The engine runs as a separate service. Event processing takes ~1.8s p99, and most of that is parallelized agent analysis.
+**Q: What's the performance impact on my systems?** A: Minimal. The engine runs as a separate service. Event processing takes ~1.8s p99, and most of that is parallelized agent analysis.
 
 ### **Business Questions**
 
-**Q: What's the ROI timeline?**A: Most organizations see measurable ROI within 30 days, with full value realization in 3-6 months as the learning system matures.
+**Q: What's the ROI timeline?** A: Most organizations see measurable ROI within 30 days, with full value realization in 3-6 months as the learning system matures.
 
-**Q: What support options are available?**A: Community support via GitHub Issues, priority support for enterprise customers, and custom integration services.
+**Q: What support options are available?** A: Community support via GitHub Issues, priority support for enterprise customers, and custom integration services.
 
-**Q: Is there an on-premises version?**A: Yes, ARF can be deployed on-premises, in VPCs, or in air-gapped environments.
+**Q: Is there an on-premises version?** A: Yes, ARF can be deployed on-premises, in VPCs, or in air-gapped environments.
 
 ## 🤝 Support & Community
 
