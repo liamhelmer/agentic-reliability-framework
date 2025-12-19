@@ -9,7 +9,7 @@
 
 ## Executive Summary
 
-Your current codebase **already contains Enterprise-grade functionality mixed into OSS code**.  
+The current codebase **already contains Enterprise-grade functionality mixed into OSS code**.  
 The MCP server supports advisory, approval, and autonomous modes, and tools can actually execute (or simulate execution).
 
 The goal is **separation, not rewrite**, while preserving functionality and enabling a clean commercial path.
