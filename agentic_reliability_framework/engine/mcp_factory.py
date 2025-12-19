@@ -249,7 +249,7 @@ def create_healing_intent_from_request(request_dict: Dict[str, Any]) -> Any:
 
 
 # Backward compatibility aliases
-def get_mcp_server(*args, **kwargs) -> Union[MCPServer, OSSMCPClient]:
+def get_mcp_server(*args: Any, **kwargs: Any) -> Union[MCPServer, OSSMCPClient]:
     """Backward compatibility alias for create_mcp_server"""
     return create_mcp_server(*args, **kwargs)
 
