@@ -1,4 +1,3 @@
-# agentic_reliability_framework/engine/mcp_factory.py
 """
 MCP Server Factory - Detects OSS vs Enterprise and returns appropriate implementation
 Maintains 100% backward compatibility while enabling clean separation
@@ -7,12 +6,20 @@ Maintains 100% backward compatibility while enabling clean separation
 import os
 import logging
 import importlib.util
-from typing import Dict, Any, Optional, Union, Type
+from typing import Dict, Any, Optional, Union, Type, cast, overload, TYPE_CHECKING
 
 from .mcp_server import MCPServer, MCPMode
 from .mcp_client import OSSMCPClient, create_mcp_client
 
+# Type checking only imports to avoid circular dependencies
+if TYPE_CHECKING:
+    from ..enterprise.mcp_server import EnterpriseMCPServer
+    from ..oss.healing_intent import HealingIntent
+
 logger = logging.getLogger(__name__)
+
+# Type alias for factory returns
+MCPInstance = Union["MCPServer", "OSSMCPClient"]
 
 
 def detect_edition() -> str:
@@ -91,11 +98,32 @@ def get_edition_info() -> Dict[str, Any]:
     return info
 
 
+@overload
+def create_mcp_server(
+    mode: Optional[Union[str, MCPMode]] = None,
+    config: Optional[Dict[str, Any]] = None,
+    force_edition: None = None
+) -> MCPInstance: ...
+
+@overload
+def create_mcp_server(
+    mode: Optional[Union[str, MCPMode]] = None,
+    config: Optional[Dict[str, Any]] = None,
+    force_edition: Literal["oss"] = "oss"
+) -> "OSSMCPClient": ...
+
+@overload
+def create_mcp_server(
+    mode: Optional[Union[str, MCPMode]] = None,
+    config: Optional[Dict[str, Any]] = None,
+    force_edition: Literal["enterprise"] = "enterprise"
+) -> "MCPServer": ...
+
 def create_mcp_server(
     mode: Optional[Union[str, MCPMode]] = None,
     config: Optional[Dict[str, Any]] = None,
     force_edition: Optional[str] = None
-) -> Union[MCPServer, OSSMCPClient]:
+) -> MCPInstance:
     """
     Factory function that creates appropriate MCP server based on edition
     
@@ -120,6 +148,8 @@ def create_mcp_server(
     # Determine edition
     if force_edition:
         edition = force_edition.lower()
+        if edition not in ("oss", "enterprise"):
+            raise ValueError(f"Invalid edition: {edition}. Must be 'oss' or 'enterprise'")
     else:
         edition = detect_edition()
     
@@ -137,10 +167,9 @@ def create_mcp_server(
             mcp_mode = mode
         else:
             # This should never happen due to type annotations
-            # type: ignore[unreachable]  # This tells mypy to ignore the unreachable error
-            pass
+            raise TypeError(f"Invalid mode type: {type(mode)}")
     
-    # OSS Edition
+    # OSS Edition - always returns OSSMCPClient
     if edition == "oss":
         logger.info("📦 Using OSS MCP Client (advisory mode only)")
         
@@ -162,9 +191,9 @@ def create_mcp_server(
         except ImportError:
             logger.info("OSS Capabilities: advisory mode only")
         
-        return client  # type: ignore[no-any-return]
+        return client  # Type: OSSMCPClient
     
-    # Enterprise Edition
+    # Enterprise Edition - returns MCPServer (or EnterpriseMCPServer)
     elif edition == "enterprise":
         logger.info("🚀 Using Enterprise MCP Server (all modes available)")
         
@@ -185,7 +214,7 @@ def create_mcp_server(
             if "enterprise" in stats:
                 logger.info(f"Enterprise Features: {stats['enterprise']}")
             
-            return server
+            return server  # Type: MCPServer (or subclass)
             
         except ImportError as e:
             logger.error(f"Enterprise features not available: {e}")
@@ -193,13 +222,15 @@ def create_mcp_server(
             
             # Fall back to OSS
             oss_client = create_mcp_client(config)
-            return oss_client  # type: ignore[no-any-return]
+            # We need to cast to MCPInstance since we're returning from enterprise branch
+            return cast(MCPInstance, oss_client)
     
     else:
+        # This should never happen due to validation above
         raise ValueError(f"Unknown edition: {edition}")
 
 
-def get_mcp_server_class() -> Type[Union[MCPServer, OSSMCPClient]]:
+def get_mcp_server_class() -> Union[Type["MCPServer"], Type["OSSMCPClient"]]:
     """
     Get the appropriate MCP server class based on edition
     
@@ -220,12 +251,12 @@ def get_mcp_server_class() -> Type[Union[MCPServer, OSSMCPClient]]:
             pass
         
         # Fall back to OSS if Enterprise not available
-        return OSSMCPClient  # type: ignore[no-any-return]
+        return OSSMCPClient
     else:
-        return OSSMCPClient  # type: ignore[no-any-return]
+        return OSSMCPClient
 
 
-def create_healing_intent_from_request(request_dict: Dict[str, Any]) -> Any:
+def create_healing_intent_from_request(request_dict: Dict[str, Any]) -> "HealingIntent":
     """
     Create HealingIntent from request (OSS only feature)
     
@@ -249,7 +280,7 @@ def create_healing_intent_from_request(request_dict: Dict[str, Any]) -> Any:
 
 
 # Backward compatibility aliases
-def get_mcp_server(*args: Any, **kwargs: Any) -> Union[MCPServer, OSSMCPClient]:
+def get_mcp_server(*args: Any, **kwargs: Any) -> MCPInstance:
     """Backward compatibility alias for create_mcp_server"""
     return create_mcp_server(*args, **kwargs)
 
