@@ -56,9 +56,9 @@ Create OSS constants with hard limits
 Implement build-time enforcement scripts
 
 Afternoon (4 hours):
-4. Create bridge interfaces for clear separation
-5. Implement HealingIntent boundary pattern
-6. Set up CI/CD with boundary checks
+1. Create bridge interfaces for clear separation
+2. Implement HealingIntent boundary pattern
+3. Set up CI/CD with boundary checks
 
 Key Files to Create Day 1:
 
