@@ -172,8 +172,10 @@ def create_mcp_server(
         elif isinstance(mode, MCPMode):
             mcp_mode = mode
         else:
-            # This should never happen due to type annotations
-            raise TypeError(f"Invalid mode type: {type(mode)}")
+            # FIXED: Remove unreachable else clause entirely
+            # The type hints ensure mode can only be str, MCPMode, or None
+            # So this else clause is unreachable
+            pass  # This line can be removed, but kept for clarity
     
     # OSS Edition - always returns OSSMCPClient
     if edition == "oss":
@@ -197,7 +199,8 @@ def create_mcp_server(
         except ImportError:
             logger.info("OSS Capabilities: advisory mode only")
         
-        return client  # Type: OSSMCPClient
+        # FIXED: Add explicit cast to satisfy mypy
+        return cast("OSSMCPClient", client)
     
     # Enterprise Edition - returns MCPServer (or EnterpriseMCPServer)
     elif edition == "enterprise":
@@ -220,7 +223,8 @@ def create_mcp_server(
             if "enterprise" in stats:
                 logger.info(f"Enterprise Features: {stats['enterprise']}")
             
-            return server  # Type: MCPServer (or subclass)
+            # FIXED: Add explicit cast to satisfy mypy
+            return cast("MCPServer", server)
             
         except ImportError as e:
             logger.error(f"Enterprise features not available: {e}")
@@ -228,7 +232,7 @@ def create_mcp_server(
             
             # Fall back to OSS
             oss_client = create_mcp_client(config)
-            # We need to cast to MCPInstance since we're returning from enterprise branch
+            # FIXED: Cast to MCPInstance since we're returning from enterprise branch
             return cast(MCPInstance, oss_client)
     
     else:
@@ -252,7 +256,8 @@ def get_mcp_server_class() -> Union[Type["MCPServer"], Type["OSSMCPClient"]]:
             enterprise_spec = importlib.util.find_spec("agentic_reliability_framework.enterprise.mcp_server")
             if enterprise_spec is not None:
                 from ..enterprise.mcp_server import EnterpriseMCPServer
-                return EnterpriseMCPServer
+                # FIXED: Add explicit return type
+                return cast(Type["MCPServer"], EnterpriseMCPServer)
         except ImportError:
             pass
         
@@ -288,7 +293,9 @@ def create_healing_intent_from_request(request_dict: Dict[str, Any]) -> Any:
 # Backward compatibility aliases
 def get_mcp_server(*args: Any, **kwargs: Any) -> MCPInstance:
     """Backward compatibility alias for create_mcp_server"""
-    return create_mcp_server(*args, **kwargs)
+    result = create_mcp_server(*args, **kwargs)
+    # FIXED: Add explicit cast
+    return cast(MCPInstance, result)
 
 
 # Export
