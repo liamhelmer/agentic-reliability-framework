@@ -167,7 +167,7 @@ def check_oss_compliance() -> bool:
             return False
         
         return True
-    except:
+    except Exception:  # Changed from bare except
         return True  # Default to OSS if cannot determine
 
 
