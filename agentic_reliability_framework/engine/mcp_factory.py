@@ -125,16 +125,20 @@ def create_mcp_server(
     
     logger.info(f"Creating MCP server for {edition} edition")
     
+    # FIXED SECTION: Added explicit type annotation and type checking
     # Convert mode string to enum if needed
-    mcp_mode = None
+    mcp_mode: Optional[MCPMode] = None
     if mode:
         if isinstance(mode, str):
             try:
                 mcp_mode = MCPMode(mode)
             except ValueError:
                 raise ValueError(f"Invalid MCP mode: {mode}. Must be one of: {[m.value for m in MCPMode]}")
-        else:
+        elif isinstance(mode, MCPMode):
             mcp_mode = mode
+        else:
+            # This should never happen due to type annotations, but helps mypy's control flow analysis
+            raise TypeError(f"Invalid mode type: {type(mode)}")
     
     # OSS Edition
     if edition == "oss":
