@@ -7,7 +7,7 @@ Maintains 100% backward compatibility while enabling clean separation
 import os
 import logging
 import importlib.util
-from typing import Dict, Any, Optional, Union, Type
+from typing import Dict, Any, Optional, Union, Type, cast
 
 from .mcp_server import MCPServer, MCPMode
 from .mcp_client import OSSMCPClient
@@ -159,8 +159,8 @@ def create_mcp_server(
         except ImportError:
             logger.info("OSS Capabilities: advisory mode only")
         
-        # Remove the unreachable return statement that was on line 137
-        return client
+        # Explicitly cast to help mypy understand the return type
+        return cast(Union[MCPServer, OSSMCPClient], client)
     
     # Enterprise Edition
     elif edition == "enterprise":
@@ -189,9 +189,9 @@ def create_mcp_server(
             logger.error(f"Enterprise features not available: {e}")
             logger.warning("Falling back to OSS edition")
             
-            # Fall back to OSS
+            # Fall back to OSS with explicit casting
             from .mcp_client import create_mcp_client
-            return create_mcp_client(config)  # type: ignore[no-any-return]
+            return cast(Union[MCPServer, OSSMCPClient], create_mcp_client(config))
     
     else:
         raise ValueError(f"Unknown edition: {edition}")
@@ -249,7 +249,7 @@ def create_healing_intent_from_request(request_dict: Dict[str, Any]) -> Any:
 
 
 # Backward compatibility aliases
-def get_mcp_server(*args, **kwargs):
+def get_mcp_server(*args, **kwargs) -> Union[MCPServer, OSSMCPClient]:
     """Backward compatibility alias for create_mcp_server"""
     return create_mcp_server(*args, **kwargs)
 
