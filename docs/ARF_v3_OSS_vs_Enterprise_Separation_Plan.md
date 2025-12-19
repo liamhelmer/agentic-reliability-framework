@@ -47,18 +47,15 @@ My current codebase **already has Enterprise features mixed with OSS code**. The
 ## 2. Immediate Action Plan (5 Days)
 
 ### Day 1: Repository Restructuring & Build-Time Boundaries
-Morning (4 hours):
-
-Split repository into OSS and Enterprise components
-
-Create OSS constants with hard limits
-
-Implement build-time enforcement scripts
+1. Morning (4 hours):
+2. Split repository into OSS and Enterprise components
+3. Create OSS constants with hard limits
+4. Implement build-time enforcement scripts
 
 Afternoon (4 hours):
-1. Create bridge interfaces for clear separation
-2. Implement HealingIntent boundary pattern
-3. Set up CI/CD with boundary checks
+5. Create bridge interfaces for clear separation
+6. Implement HealingIntent boundary pattern
+7. Set up CI/CD with boundary checks
 
 Key Files to Create Day 1:
 
@@ -83,18 +80,15 @@ arf-enterprise/                        # Commercial
 ```
 
 ### Day 2: MCP Server Separation & Mode Enforcement
-Morning (4 hours):
-
-Restrict OSS MCP client to advisory mode only
-
-Create Enterprise MCP server with license validation
-
-Implement HealingIntent serialization
+1. Morning (4 hours):
+2. Restrict OSS MCP client to advisory mode only
+3. Create Enterprise MCP server with license validation
+4. Implement HealingIntent serialization
 
 Afternoon (4 hours):
-4. Update tool implementations for separation
-5. Create cross-layer integration tests
-6. Implement secure handoff OSS→Enterprise
+5. Update tool implementations for separation
+6. Create cross-layer integration tests
+7. Implement secure handoff OSS→Enterprise
 
 Key Changes to Existing Code:
 
@@ -126,12 +120,9 @@ class EnterpriseMCPServer(MCPServer):  # Your existing class
 
 ### Day 3: Security, Compliance & Data Separation
 Morning (4 hours):
-
-Implement tier-specific security modules
-
-Create audit trail system (Enterprise only)
-
-Set up data ownership boundaries
+1. Implement tier-specific security modules
+2. Create audit trail system (Enterprise only)
+3. Set up data ownership boundaries
 
 Afternoon (4 hours):
 4. Implement compliance frameworks
@@ -140,12 +131,9 @@ Afternoon (4 hours):
 
 ### Day 4: Testing Infrastructure & CI/CD
 Morning (4 hours):
-
-Create four-layer test suite
-
-Implement API contract tests
-
-Set up benchmark validation tests
+1. Create four-layer test suite
+2. Implement API contract tests
+3. Set up benchmark validation tests
 
 Afternoon (4 hours):
 4. Create integration test mocks
@@ -154,12 +142,9 @@ Afternoon (4 hours):
 
 ### Day 5: Deployment & Documentation
 Morning (4 hours):
-
-Create Docker configurations per tier
-
-Implement Kubernetes manifests
-
-Set up monitoring & alerting
+1. Create Docker configurations per tier
+2. Implement Kubernetes manifests
+3. Set up monitoring & alerting
 
 Afternoon (4 hours):
 4. Generate compliance readiness report
