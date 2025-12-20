@@ -1,11 +1,11 @@
 """
-Configuration Management for Agentic Reliability Framework
-Updated with v3 RAG Graph, MCP Server, and Learning Loop features
+Configuration Management for Agentic Reliability Framework - OSS EDITION
+Apache 2.0 Licensed - Enterprise features require commercial license
 """
 
 import os
 from typing import Dict, Any
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, ValidationError
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -14,19 +14,18 @@ load_dotenv()
 
 class Config(BaseModel):
     """
-    Application configuration with environment variable support
+    OSS Edition Configuration with hard limits
     
-    V3 Features:
-    - RAG Graph Configuration
-    - MCP Server Configuration  
-    - Learning Loop Configuration
-    - Feature Flags for gradual rollout
+    V3 Features (OSS Limited):
+    - RAG Graph Configuration (1k incident limit)
+    - MCP Server Configuration (advisory only)  
+    - No Learning Loop (Enterprise only)
+    - No Beta Testing (Enterprise only)
     """
     
     model_config = ConfigDict(
         validate_assignment=True,
-        extra="ignore"
-        # Removed: env_prefix and case_sensitive are not valid in Pydantic v2 ConfigDict
+        extra="forbid"  # Strict mode - no extra fields allowed
     )
     
     # === API Configuration ===
@@ -37,78 +36,213 @@ class Config(BaseModel):
     )
     
     # === System Configuration ===
-    max_events_stored: int = Field(default=1000, description="Maximum events to store in memory")
-    faiss_batch_size: int = Field(default=10, description="FAISS batch size for async writes")
-    vector_dim: int = Field(default=384, description="Vector dimension for embeddings")
+    max_events_stored: int = Field(
+        default=1000, 
+        description="Maximum events to store in memory (OSS limit: 1000)",
+        ge=1,
+        le=1000  # OSS hard limit
+    )
+    faiss_batch_size: int = Field(
+        default=10, 
+        description="FAISS batch size for async writes"
+    )
+    vector_dim: int = Field(
+        default=384, 
+        description="Vector dimension for embeddings"
+    )
     
     # === Business Metrics ===
-    base_revenue_per_minute: float = Field(default=100.0, description="Base revenue per minute for impact calculation")
-    base_users: int = Field(default=1000, description="Base user count for impact calculation")
+    base_revenue_per_minute: float = Field(
+        default=100.0, 
+        description="Base revenue per minute for impact calculation"
+    )
+    base_users: int = Field(
+        default=1000, 
+        description="Base user count for impact calculation"
+    )
     
     # === Anomaly Detection Thresholds ===
-    latency_critical: float = Field(default=300.0, description="Critical latency threshold (ms)")
-    latency_warning: float = Field(default=150.0, description="Warning latency threshold (ms)")
-    latency_extreme: float = Field(default=500.0, description="Extreme latency threshold (ms)")
+    latency_critical: float = Field(
+        default=300.0, 
+        description="Critical latency threshold (ms)"
+    )
+    latency_warning: float = Field(
+        default=150.0, 
+        description="Warning latency threshold (ms)"
+    )
+    latency_extreme: float = Field(
+        default=500.0, 
+        description="Extreme latency threshold (ms)"
+    )
     
-    cpu_critical: float = Field(default=0.9, description="Critical CPU threshold")
-    memory_critical: float = Field(default=0.9, description="Critical memory threshold")
+    cpu_critical: float = Field(
+        default=0.9, 
+        description="Critical CPU threshold",
+        ge=0.0,
+        le=1.0
+    )
+    memory_critical: float = Field(
+        default=0.9, 
+        description="Critical memory threshold",
+        ge=0.0,
+        le=1.0
+    )
     
-    error_rate_critical: float = Field(default=0.3, description="Critical error rate threshold")
-    error_rate_high: float = Field(default=0.15, description="High error rate threshold")
-    error_rate_warning: float = Field(default=0.05, description="Warning error rate threshold")
+    error_rate_critical: float = Field(
+        default=0.3, 
+        description="Critical error rate threshold",
+        ge=0.0,
+        le=1.0
+    )
+    error_rate_high: float = Field(
+        default=0.15, 
+        description="High error rate threshold",
+        ge=0.0,
+        le=1.0
+    )
+    error_rate_warning: float = Field(
+        default=0.05, 
+        description="Warning error rate threshold",
+        ge=0.0,
+        le=1.0
+    )
     
     # === Forecasting Constants ===
-    forecast_lookahead_minutes: int = Field(default=15, description="Forecast lookahead in minutes")
-    forecast_min_data_points: int = Field(default=5, description="Minimum data points for forecast")
-    slope_threshold_increasing: float = Field(default=5.0, description="Increasing trend threshold")
-    slope_threshold_decreasing: float = Field(default=-2.0, description="Decreasing trend threshold")
-    cache_expiry_minutes: int = Field(default=15, description="Cache expiry in minutes")
+    forecast_lookahead_minutes: int = Field(
+        default=15, 
+        description="Forecast lookahead in minutes"
+    )
+    forecast_min_data_points: int = Field(
+        default=5, 
+        description="Minimum data points for forecast"
+    )
+    slope_threshold_increasing: float = Field(
+        default=5.0, 
+        description="Increasing trend threshold"
+    )
+    slope_threshold_decreasing: float = Field(
+        default=-2.0, 
+        description="Decreasing trend threshold"
+    )
+    cache_expiry_minutes: int = Field(
+        default=15, 
+        description="Cache expiry in minutes"
+    )
     
     # === Rate Limiting ===
-    max_requests_per_minute: int = Field(default=60, description="Maximum requests per minute")
-    max_requests_per_hour: int = Field(default=500, description="Maximum requests per hour")
+    max_requests_per_minute: int = Field(
+        default=60, 
+        description="Maximum requests per minute"
+    )
+    max_requests_per_hour: int = Field(
+        default=500, 
+        description="Maximum requests per hour"
+    )
     
     # === Logging ===
-    log_level: str = Field(default="INFO", description="Logging level")
+    log_level: str = Field(
+        default="INFO", 
+        description="Logging level"
+    )
     
     # === File Paths ===
-    index_file: str = Field(default="data/faiss_index.bin", description="FAISS index file path")
-    incident_texts_file: str = Field(default="data/incident_texts.json", description="FAISS incident texts file path")
+    index_file: str = Field(
+        default="data/faiss_index.bin", 
+        description="FAISS index file path"
+    )
+    incident_texts_file: str = Field(
+        default="data/incident_texts.json", 
+        description="FAISS incident texts file path"
+    )
     
-    # === v3 FEATURE FLAGS & CONFIGURATION ===
-    # Phase 1: RAG Graph
-    rag_enabled: bool = Field(default=False, description="Enable RAG Graph features")
-    rag_similarity_threshold: float = Field(default=0.3, description="Minimum similarity threshold for RAG retrieval")
-    rag_max_incident_nodes: int = Field(default=1000, description="Maximum incident nodes in RAG graph")
-    rag_max_outcome_nodes: int = Field(default=5000, description="Maximum outcome nodes in RAG graph")
-    rag_cache_size: int = Field(default=100, description="RAG similarity cache size")
-    rag_embedding_dim: int = Field(default=384, description="RAG embedding dimension")
+    # === v3 FEATURE FLAGS & CONFIGURATION (OSS LIMITED) ===
     
-    # Phase 2: MCP Server
-    mcp_mode: str = Field(default="advisory", description="MCP execution mode: advisory, approval, or autonomous")
-    mcp_enabled: bool = Field(default=False, description="Enable MCP Server for execution boundaries")
-    mcp_host: str = Field(default="localhost", description="MCP Server host")
-    mcp_port: int = Field(default=8000, description="MCP Server port")
-    mcp_timeout_seconds: int = Field(default=10, description="MCP request timeout")
-    mpc_cooldown_seconds: int = Field(default=60, description="MCP tool cooldown period")
+    # Phase 1: RAG Graph (OSS - Limited)
+    rag_enabled: bool = Field(
+        default=False, 
+        description="Enable RAG Graph features"
+    )
+    rag_similarity_threshold: float = Field(
+        default=0.3, 
+        description="Minimum similarity threshold for RAG retrieval",
+        ge=0.0,
+        le=1.0
+    )
+    rag_max_incident_nodes: int = Field(
+        default=1000,  # OSS HARD LIMIT
+        description="Maximum incident nodes in RAG graph (OSS limit: 1000)",
+        ge=1,
+        le=1000  # OSS hard limit - cannot be increased
+    )
+    rag_max_outcome_nodes: int = Field(
+        default=5000,  # OSS HARD LIMIT
+        description="Maximum outcome nodes in RAG graph (OSS limit: 5000)",
+        ge=1,
+        le=5000  # OSS hard limit - cannot be increased
+    )
+    rag_cache_size: int = Field(
+        default=100, 
+        description="RAG similarity cache size"
+    )
+    rag_embedding_dim: int = Field(
+        default=384, 
+        description="RAG embedding dimension"
+    )
     
-    # Phase 3: Learning Loop
-    learning_enabled: bool = Field(default=False, description="Enable learning loop from outcomes")
-    learning_min_data_points: int = Field(default=10, description="Minimum data points before learning")
-    learning_confidence_threshold: float = Field(default=0.7, description="Confidence threshold for learned patterns")
-    learning_retention_days: int = Field(default=30, description="Days to retain learning data")
+    # Phase 2: MCP Server (OSS - Advisory Only)
+    mcp_mode: str = Field(
+        default="advisory", 
+        description="MCP execution mode: advisory ONLY (Enterprise required for approval/autonomous)",
+        pattern="^advisory$"  # Only 'advisory' allowed in OSS
+    )
+    mcp_enabled: bool = Field(
+        default=False, 
+        description="Enable MCP Server for analysis boundaries (OSS: advisory only)"
+    )
+    mcp_host: str = Field(
+        default="localhost", 
+        description="MCP Server host"
+    )
+    mcp_port: int = Field(
+        default=8000, 
+        description="MCP Server port",
+        ge=1,
+        le=65535
+    )
+    mcp_timeout_seconds: int = Field(
+        default=10, 
+        description="MCP request timeout"
+    )
+    mpc_cooldown_seconds: int = Field(
+        default=60, 
+        description="MCP tool cooldown period"
+    )
+    
+    # Phase 3: Learning Loop (REMOVED - Enterprise Only)
+    # No learning_enabled, learning_min_data_points, etc. in OSS
     
     # === Performance & Safety ===
-    agent_timeout_seconds: int = Field(default=5, description="Agent timeout in seconds")
-    circuit_breaker_failures: int = Field(default=3, description="Circuit breaker failure threshold")
-    circuit_breaker_timeout: int = Field(default=30, description="Circuit breaker recovery timeout")
+    agent_timeout_seconds: int = Field(
+        default=5, 
+        description="Agent timeout in seconds"
+    )
+    circuit_breaker_failures: int = Field(
+        default=3, 
+        description="Circuit breaker failure threshold"
+    )
+    circuit_breaker_timeout: int = Field(
+        default=30, 
+        description="Circuit breaker recovery timeout"
+    )
     
     # === Demo Mode ===
-    demo_mode: bool = Field(default=False, description="Enable demo mode with pre-configured scenarios")
+    demo_mode: bool = Field(
+        default=False, 
+        description="Enable demo mode with pre-configured scenarios"
+    )
     
-    # === Rollout Configuration ===
-    rollout_percentage: int = Field(default=0, description="Percentage of traffic to enable v3 features for (0-100)")
-    beta_testing_enabled: bool = Field(default=False, description="Enable beta testing features")
+    # === Rollout Configuration (REMOVED - Enterprise Only) ===
+    # No rollout_percentage or beta_testing_enabled in OSS
     
     # === Safety Guardrails ===
     safety_action_blacklist: str = Field(
@@ -124,15 +258,56 @@ class Config(BaseModel):
         description="RAG search timeout in milliseconds before circuit breaker"
     )
     
+    # === OSS EDITION PROPERTIES ===
+    
     @property
-    def v3_features(self) -> Dict[str, bool]:
-        """Get v3 feature status"""
+    def is_oss_edition(self) -> bool:
+        """Always True for OSS configuration"""
+        return True
+    
+    @property
+    def requires_enterprise_upgrade(self) -> bool:
+        """Check if configuration requires Enterprise upgrade"""
+        # In OSS, only advisory mode is allowed
+        if self.mcp_mode != "advisory":
+            return True
+        # MCP execution requires Enterprise
+        if self.mcp_enabled and self.mcp_mode != "advisory":
+            return True
+        # RAG limits at maximum
+        if self.rag_max_incident_nodes >= 1000 or self.rag_max_outcome_nodes >= 5000:
+            return True
+        return False
+    
+    @property
+    def v3_features(self) -> Dict[str, Any]:
+        """Get v3 feature status - OSS edition with upgrade info"""
         return {
             "rag_enabled": self.rag_enabled,
             "mcp_enabled": self.mcp_enabled,
-            "learning_enabled": self.learning_enabled,
-            "beta_testing": self.beta_testing_enabled,
-            "rollout_active": self.rollout_percentage > 0,
+            "learning_enabled": False,  # OSS: Always False
+            "beta_testing": False,      # OSS: Always False
+            "rollout_active": False,    # OSS: Always False
+            "edition": "oss",
+            "oss_limits": {
+                "max_incident_nodes": 1000,
+                "max_outcome_nodes": 5000,
+                "mcp_mode": "advisory",
+                "execution_allowed": False,
+            },
+            "enterprise_upgrade_required": self.requires_enterprise_upgrade,
+            "enterprise_features": [
+                "autonomous_execution",
+                "approval_workflows",
+                "learning_engine",
+                "persistent_storage",
+                "unlimited_rag_nodes",
+                "audit_trails",
+                "compliance_reports",
+                "sso_integration",
+                "24_7_support"
+            ],
+            "upgrade_url": "https://arf.dev/enterprise"
         }
     
     @property
@@ -145,15 +320,107 @@ class Config(BaseModel):
             "circuit_breaker": {
                 "failures": self.circuit_breaker_failures,
                 "timeout": self.circuit_breaker_timeout,
-            }
+            },
+            "edition": "oss",
+            "execution_blocked": True  # OSS never executes
+        }
+    
+    def validate_oss_constraints(self) -> None:
+        """
+        Validate OSS edition constraints
+        
+        Raises:
+            ValueError: If configuration violates OSS boundaries
+            OSSBoundaryError: If Enterprise features are detected
+        """
+        violations = []
+        
+        # Validate MCP mode (must be advisory)
+        if self.mcp_mode != "advisory":
+            violations.append(
+                f"MCP mode must be 'advisory' in OSS edition. "
+                f"Got: '{self.mcp_mode}'. "
+                f"Upgrade to Enterprise for approval/autonomous modes."
+            )
+        
+        # Validate RAG limits
+        if self.rag_max_incident_nodes > 1000:
+            violations.append(
+                f"rag_max_incident_nodes exceeds OSS limit (1000): {self.rag_max_incident_nodes}. "
+                f"Enterprise edition supports unlimited nodes."
+            )
+        
+        if self.rag_max_outcome_nodes > 5000:
+            violations.append(
+                f"rag_max_outcome_nodes exceeds OSS limit (5000): {self.rag_max_outcome_nodes}. "
+                f"Enterprise edition supports unlimited nodes."
+            )
+        
+        # Validate no execution capability
+        if self.mcp_enabled and self.mcp_mode != "advisory":
+            violations.append(
+                "MCP execution requires Enterprise edition. "
+                "OSS edition only supports advisory (analysis) mode."
+            )
+        
+        # Check for Enterprise-only environment variables
+        enterprise_env_vars = [
+            "LEARNING_ENABLED",
+            "LEARNING_MIN_DATA_POINTS", 
+            "LEARNING_CONFIDENCE_THRESHOLD",
+            "LEARNING_RETENTION_DAYS",
+            "ROLLOUT_PERCENTAGE",
+            "BETA_TESTING_ENABLED",
+        ]
+        
+        for env_var in enterprise_env_vars:
+            if os.getenv(env_var):
+                violations.append(
+                    f"Environment variable {env_var} is Enterprise-only. "
+                    f"Remove it or upgrade to Enterprise edition."
+                )
+        
+        if violations:
+            error_msg = (
+                "OSS CONFIGURATION VIOLATIONS DETECTED:\n\n" +
+                "\n".join(f"• {v}" for v in violations) +
+                "\n\nUpgrade to Enterprise Edition for these features:\n"
+                "https://arf.dev/enterprise\n\n"
+                "Or fix configuration to comply with OSS limits."
+            )
+            raise ValueError(error_msg)
+    
+    def get_oss_limits(self) -> Dict[str, Any]:
+        """Get OSS edition limits for documentation"""
+        return {
+            "edition": "oss",
+            "license": "Apache 2.0",
+            "limits": {
+                "max_events_stored": 1000,
+                "rag_max_incident_nodes": 1000,
+                "rag_max_outcome_nodes": 5000,
+                "mcp_mode": "advisory",
+                "execution_allowed": False,
+                "learning_enabled": False,
+                "persistent_storage": False,
+            },
+            "capabilities": {
+                "rag_analysis": True,
+                "mcp_advisory": True,
+                "anomaly_detection": True,
+                "business_impact": True,
+                "forecasting": True,
+            },
+            "enterprise_upgrade_available": True,
+            "upgrade_url": "https://arf.dev/enterprise"
         }
     
     @classmethod
     def from_env(cls) -> "Config":
-        """Create configuration from environment variables"""
+        """Create configuration from environment variables with OSS validation"""
         env_vars: Dict[str, Any] = {}
         
-        # Map environment variables to config fields
+        # Map environment variables to config fields (OSS ONLY)
         field_mapping = {
             "HF_API_KEY": "hf_api_key",
             "HF_API_URL": "hf_api_url",
@@ -185,7 +452,7 @@ class Config(BaseModel):
             "SLOPE_THRESHOLD_DECREASING": "slope_threshold_decreasing",
             "CACHE_EXPIRY_MINUTES": "cache_expiry_minutes",
             
-            # v3 Features
+            # v3 Features (OSS Limited)
             "RAG_ENABLED": "rag_enabled",
             "RAG_SIMILARITY_THRESHOLD": "rag_similarity_threshold",
             "RAG_MAX_INCIDENT_NODES": "rag_max_incident_nodes",
@@ -200,19 +467,14 @@ class Config(BaseModel):
             "MCP_TIMEOUT_SECONDS": "mcp_timeout_seconds",
             "MPC_COOLDOWN_SECONDS": "mpc_cooldown_seconds",
             
-            "LEARNING_ENABLED": "learning_enabled",
-            "LEARNING_MIN_DATA_POINTS": "learning_min_data_points",
-            "LEARNING_CONFIDENCE_THRESHOLD": "learning_confidence_threshold",
-            "LEARNING_RETENTION_DAYS": "learning_retention_days",
+            # No learning environment variables in OSS
+            # No rollout environment variables in OSS
             
             "AGENT_TIMEOUT_SECONDS": "agent_timeout_seconds",
             "CIRCUIT_BREAKER_FAILURES": "circuit_breaker_failures",
             "CIRCUIT_BREAKER_TIMEOUT": "circuit_breaker_timeout",
             
             "DEMO_MODE": "demo_mode",
-            
-            "ROLLOUT_PERCENTAGE": "rollout_percentage",
-            "BETA_TESTING_ENABLED": "beta_testing_enabled",
             
             "SAFETY_ACTION_BLACKLIST": "safety_action_blacklist",
             "SAFETY_MAX_BLAST_RADIUS": "safety_max_blast_radius",
@@ -225,6 +487,8 @@ class Config(BaseModel):
                 # Get field type from model fields
                 field_info = cls.model_fields.get(field_name)
                 if field_info is None:
+                    # Skip fields that don't exist in OSS edition
+                    print(f"⚠️  Warning: {env_name} maps to non-existent field {field_name} in OSS edition")
                     continue
                     
                 field_type = field_info.annotation
@@ -238,19 +502,48 @@ class Config(BaseModel):
                         env_vars[field_name] = float(env_value)
                     else:
                         env_vars[field_name] = env_value
-                except (ValueError, TypeError):
+                except (ValueError, TypeError) as e:
+                    print(f"⚠️  Warning: Failed to parse {env_name}={env_value}: {e}")
                     # Use default if conversion fails
                     continue
         
-        return cls(**env_vars)
+        # Create config instance
+        config = cls(**env_vars)
+        
+        # Validate OSS constraints
+        try:
+            config.validate_oss_constraints()
+        except ValueError as e:
+            # Log the violation but don't crash - use defaults
+            print(f"🚨 OSS Configuration Violation: {str(e)[:200]}...")
+            print("🔧 Using default OSS configuration")
+            # Re-create with defaults to ensure OSS compliance
+            config = cls()
+        
+        return config
 
 
-# Global configuration instance
+# Custom exception for OSS boundary violations
+class OSSBoundaryError(ValueError):
+    """Raised when OSS boundaries are violated"""
+    pass
+
+
+# Global configuration instance with OSS validation
 config = Config.from_env()
+
+# Validate on module load
+try:
+    config.validate_oss_constraints()
+except ValueError as e:
+    print(f"🚨 CRITICAL: OSS boundary violation on startup: {e}")
+    print("🔄 Falling back to safe OSS defaults")
+    config = Config()  # Use safe defaults
+
 
 # Update MemoryConstants with config values
 def update_memory_constants():
-    """Update memory constants from config"""
+    """Update memory constants from config (with OSS limits)"""
     try:
         from .memory.constants import MemoryConstants
         
@@ -260,19 +553,44 @@ def update_memory_constants():
         if hasattr(MemoryConstants, 'VECTOR_DIM'):
             MemoryConstants.VECTOR_DIM = config.vector_dim
         
-        # Update RAG constants
+        # Update RAG constants with OSS limits
         if hasattr(MemoryConstants, 'MAX_INCIDENT_NODES'):
-            MemoryConstants.MAX_INCIDENT_NODES = config.rag_max_incident_nodes
+            # Enforce OSS limit
+            MemoryConstants.MAX_INCIDENT_NODES = min(
+                config.rag_max_incident_nodes, 
+                1000  # OSS hard limit
+            )
         if hasattr(MemoryConstants, 'MAX_OUTCOME_NODES'):
-            MemoryConstants.MAX_OUTCOME_NODES = config.rag_max_outcome_nodes
+            # Enforce OSS limit
+            MemoryConstants.MAX_OUTCOME_NODES = min(
+                config.rag_max_outcome_nodes,
+                5000  # OSS hard limit
+            )
         if hasattr(MemoryConstants, 'GRAPH_CACHE_SIZE'):
             MemoryConstants.GRAPH_CACHE_SIZE = config.rag_cache_size
         if hasattr(MemoryConstants, 'SIMILARITY_THRESHOLD'):
             MemoryConstants.SIMILARITY_THRESHOLD = config.rag_similarity_threshold
         
+        # Add OSS edition flag
+        if hasattr(MemoryConstants, 'OSS_EDITION'):
+            MemoryConstants.OSS_EDITION = True
+            
     except ImportError:
         pass  # MemoryConstants module might not exist yet
+    except Exception as e:
+        print(f"⚠️  Warning: Failed to update memory constants: {e}")
 
 
 # Initialize constants on module load
 update_memory_constants()
+
+# Export OSS edition information
+OSS_EDITION = True
+OSS_LICENSE = "Apache 2.0"
+ENTERPRISE_UPGRADE_URL = "https://arf.dev/enterprise"
+
+# Print OSS edition info on import (development only)
+if __name__ != "__main__":
+    print(f"✅ Agentic Reliability Framework - OSS Edition (Apache 2.0)")
+    if config.requires_enterprise_upgrade:
+        print(f"⚠️  Configuration requires Enterprise upgrade: {ENTERPRISE_UPGRADE_URL}")
