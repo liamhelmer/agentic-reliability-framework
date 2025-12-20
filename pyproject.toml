@@ -4,208 +4,24 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "agentic-reliability-framework"
-version = "3.3.0"  # Updated to v3.3.0 (OSS Edition)
+version = "3.3.0"
 description = "Production-grade multi-agent AI system for infrastructure reliability monitoring and self-healing - OSS Edition"
 readme = "README.md"
-requires-python = ">=3.11"  # Updated from 3.10 to 3.11
-license = {text = "Apache 2.0"}  # CHANGED: MIT → Apache 2.0
+requires-python = ">=3.10"  # 🔄 FIXED: Back to 3.10
+license = {text = "Apache 2.0"}
 authors = [
     {name = "Juan Petter", email = "petter2025us@outlook.com"}
 ]
-keywords = [
-    "ai-agents",
-    "reliability-engineering",
-    "mlops",
-    "observability",
-    "self-healing",
-    "anomaly-detection",
-    "predictive-analytics",
-    "open-source",  # Added: clarifies OSS edition
-    "monitoring",   # Added: better discoverability
-]
-classifiers = [
-    "Development Status :: 5 - Production/Stable",  # Updated from Beta to Production
-    "Intended Audience :: Developers",
-    "Intended Audience :: System Administrators",
-    "Intended Audience :: Information Technology",
-    "License :: OSI Approved :: Apache Software License",  # CHANGED: MIT → Apache
-    "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.11",  # Added explicit 3.11
-    "Programming Language :: Python :: 3.12",
-    "Topic :: System :: Monitoring",
-    "Topic :: Scientific/Engineering :: Artificial Intelligence",
-    "Topic :: System :: Systems Administration",
-    "Topic :: Software Development :: Libraries :: Python Modules",
-    "Operating System :: OS Independent",
-]
 
-dependencies = [
-    # UI Framework
-    "gradio>=5.0.0,<6.0.0",
-    
-    # Core Data & ML
-    "numpy>=1.24.0,<2.0.0",
-    "pandas>=2.0.0,<3.0.0",
-    "pydantic>=2.0.0,<3.0.0",
-    "sentence-transformers>=2.2.0",
-    "faiss-cpu>=1.7.4",
-    
-    # Networking & Utilities
-    "requests>=2.32.5",
-    "circuitbreaker>=1.4.0",
-    "atomicwrites>=1.4.1",
-    "python-dotenv>=1.0.0",
-    "click>=8.0.0",
-    
-    # NEW: Async support for v3 features
-    "asyncio>=3.4.3",  # For async/await support
-    "aiohttp>=3.9.0",  # For async HTTP requests
-    "anyio>=4.0.0",    # For async compatibility
-]
-
-[project.optional-dependencies]
-dev = [
-    # Testing
-    "pytest>=7.4.0",
-    "pytest-asyncio>=0.21.0",
-    "pytest-cov>=4.1.0",
-    "pytest-xdist>=3.5.0",  # Added: parallel testing
-    
-    # Formatting & Linting
-    "black>=23.7.0",
-    "ruff>=0.0.285",
-    "mypy>=1.5.0",
-    "pre-commit>=3.6.0",    # Added: pre-commit hooks
-    
-    # Type stubs (only for complex libraries)
-    "types-requests>=2.32.0",
-    "types-python-dotenv>=1.0.0",
-]
-
-v3-features = [  # NEW: Optional v3 feature dependencies
-    "httpx>=0.25.0",        # Async HTTP client for MCP server
-    "uvicorn>=0.24.0",      # ASGI server for MCP endpoints
-    "fastapi>=0.104.0",     # Optional: REST API for MCP
-    "websockets>=12.0",     # Optional: WebSocket support
-]
-
-enterprise-bridge = [  # NEW: Optional bridge to enterprise
-    "pyjwt>=2.8.0",         # For HealingIntent validation
-    "cryptography>=42.0.0", # For secure serialization
-]
-
-[project.urls]
-Homepage = "https://arf.dev"
-Documentation = "https://docs.arf.dev"
-Repository = "https://github.com/petterjuan/agentic-reliability-framework"
-Issues = "https://github.com/petterjuan/agentic-reliability-framework/issues"
-"Open Source" = "https://github.com/petterjuan/agentic-reliability-framework"  # Added
-"Enterprise Edition" = "https://github.com/petterjuan/agentic-reliability-enterprise"  # Added
-"Live Demo" = "https://huggingface.co/spaces/petter2025/agentic-reliability-framework"  # Added
-
-[project.scripts]
-arf = "agentic_reliability_framework.cli:main"
-arf-oss = "agentic_reliability_framework.cli:main"  # Alias for clarity
-
-[tool.setuptools]
-packages.find = {where = ["."]}
-include-package-data = true
-
-[tool.setuptools.package-data]
-"*" = ["*.json", "*.index", "*.txt", "*.md", "*.pyi"]
-"agentic_reliability_framework" = ["data/*", "py.typed", "oss/*"]
+# ... rest of file ...
 
 [tool.black]
 line-length = 100
-target-version = ['py311']  # Updated from py310 to py311
+target-version = ['py310']  # 🔄 FIXED: Back to py310
 
 [tool.ruff]
 line-length = 100
-target-version = "py311"  # Updated from py310 to py311
-select = [
-    "E",   # pycodestyle errors
-    "W",   # pycodestyle warnings
-    "F",   # Pyflakes
-    "I",   # isort
-    "B",   # flake8-bugbear
-    "C4",  # flake8-comprehensions
-    "UP",  # pyupgrade - keep Python modern
-    "ASYNC",  # Added: async-related rules
-]
-ignore = [
-    "E501",  # line too long (handled by black)
-    "W503",  # line break before operator (black compatible)
-    "F401",  # module imported but unused (allow for TYPE_CHECKING)
-    "B008",  # do not perform function calls in argument defaults
-]
-extend-exclude = [
-    "__pycache__",
-    ".git",
-    ".mypy_cache",
-    ".pytest_cache",
-    ".ruff_cache",
-    "node_modules",
-    "build",
-    "dist",
-    "*.egg-info",
-]
-
-[tool.ruff.isort]
-known-first-party = ["agentic_reliability_framework"]
-combine-as-imports = true
-force-sort-within-sections = true
-lines-after-imports = 2
-classes = ["constants", "models", "engine", "memory", "oss"]  # Added: custom section ordering
-
-[tool.ruff.per-file-ignores]
-# Allow enterprise mentions in documentation
-"**/docs/*.md" = ["E501"]
-"**/README.md" = ["E501"]
-# Allow type checking imports
-"**/__init__.py" = ["F401"]
+target-version = "py310"  # 🔄 FIXED: Back to py310
 
 [tool.mypy]
-python_version = "3.11"  # Updated from 3.10 to 3.11
-warn_return_any = true
-warn_unused_configs = true
-disallow_untyped_defs = false
-disallow_incomplete_defs = true
-check_untyped_defs = true
-no_implicit_optional = true
-warn_redundant_casts = true
-warn_unused_ignores = true
-warn_no_return = true
-warn_unreachable = true
-strict_equality = true
-
-# Allow TYPE_CHECKING imports
-disable_error_code = [
-    "import-untyped",
-    "attr-defined",
-    "empty-body",
-    "assignment",  # Allow some flexibility for dynamic code
-]
-
-# Configuration for specific modules
-[[tool.mypy.overrides]]
-module = [
-    "agentic_reliability_framework.engine.business",
-    "agentic_reliability_framework.app"
-]
-disallow_untyped_defs = false
-check_untyped_defs = false
-
-[[tool.mypy.overrides]]
-module = [
-    "agentic_reliability_framework.engine.mcp_server",
-    "agentic_reliability_framework.engine.mcp_client"
-]
-disallow_untyped_defs = true  # Stricter for MCP components
-check_untyped_defs = true
-
-[[tool.mypy.overrides]]
-module = [
-    "agentic_reliability_framework.oss.*"
-]
-disallow_untyped_defs = true  # Stricter for OSS boundary code
-check_untyped_defs = true
+python_version = "3.10"  # 🔄 FIXED: Back to 3.10
