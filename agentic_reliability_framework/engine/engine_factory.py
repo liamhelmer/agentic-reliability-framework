@@ -19,13 +19,7 @@ limitations under the License.
 """
 
 import logging
-from typing import Dict, Any, Optional, Union, Type, cast, overload, TYPE_CHECKING
-
-# Handle Literal for different Python versions
-try:
-    from typing import Literal
-except ImportError:
-    from typing_extensions import Literal
+from typing import Dict, Any, Optional, Union, TYPE_CHECKING
 
 from ..config import config
 
@@ -133,11 +127,11 @@ class EngineFactory:
                 mcp_server = None
                 
                 try:
-                    from ..memory.rag_graph import RAGGraphMemory
+                    # Only import if we need it
                     from ..lazy import get_rag_graph
                     rag_graph = get_rag_graph()
                 except ImportError:
-                    logger.warning("RAGGraphMemory not available")
+                    logger.warning("RAG graph not available")
                 
                 try:
                     from ..lazy import get_mcp_server
@@ -374,6 +368,19 @@ def create_engine(engine_config: Optional[EngineConfig] = None) -> Union[OSSV3Re
 def get_engine(engine_config: Optional[EngineConfig] = None) -> Union[OSSV3ReliabilityEngine, OSSEnhancedV3ReliabilityEngine]:
     """Alias for create_engine - backward compatibility"""
     return create_engine(engine_config)
+
+
+# Convenience functions that delegate to EngineFactory
+def get_oss_engine_capabilities() -> Dict[str, Any]:
+    """Get OSS engine capabilities and limits"""
+    factory = EngineFactory()
+    return factory.get_oss_engine_capabilities()
+
+
+def validate_oss_compatibility(engine_config: EngineConfig) -> Dict[str, Any]:
+    """Validate engine configuration for OSS compatibility"""
+    factory = EngineFactory()
+    return factory.validate_oss_compatibility(engine_config)
 
 
 # Export
