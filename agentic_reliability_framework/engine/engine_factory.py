@@ -146,42 +146,56 @@ class EngineFactory:
                     logger.warning("MCP server not available")
                 
                 # Create enhanced engine
-                base_engine: EnhancedV3Engine = EnhancedV3Engine(
+                enhanced_base_engine: EnhancedV3Engine = EnhancedV3Engine(
                     rag_graph=rag_graph,
                     mcp_server=mcp_server
                 )
                 
                 # Wrap in OSS wrapper
-                engine: OSSEnhancedV3ReliabilityEngine = OSSEnhancedV3ReliabilityEngine(base_engine)
+                enhanced_engine: OSSEnhancedV3ReliabilityEngine = OSSEnhancedV3ReliabilityEngine(enhanced_base_engine)
+                
+                self._engines_created += 1
+                
+                # Log OSS capabilities
+                logger.info(f"OSS Engine Created: {type(enhanced_engine).__name__}")
+                logger.info(f"OSS Limits: 1000 incident nodes max, advisory mode only")
+                
+                if hasattr(enhanced_engine, '_requires_enterprise') and enhanced_engine._requires_enterprise:
+                    logger.info(
+                        "💡 Upgrade to Enterprise for more features: "
+                        "https://arf.dev/enterprise"
+                    )
+                
+                return enhanced_engine
                 
             else:
                 logger.info("Creating V3ReliabilityEngine (OSS Edition)")
                 base_engine: BaseV3Engine = BaseV3Engine()
                 
                 # Wrap in OSS wrapper
-                engine: OSSV3ReliabilityEngine = OSSV3ReliabilityEngine(base_engine)
-            
-            self._engines_created += 1
-            
-            # Log OSS capabilities
-            logger.info(f"OSS Engine Created: {type(engine).__name__}")
-            logger.info(f"OSS Limits: 1000 incident nodes max, advisory mode only")
-            
-            if hasattr(engine, '_requires_enterprise') and engine._requires_enterprise:
-                logger.info(
-                    "💡 Upgrade to Enterprise for more features: "
-                    "https://arf.dev/enterprise"
-                )
-            
-            return engine
+                oss_engine: OSSV3ReliabilityEngine = OSSV3ReliabilityEngine(base_engine)
+                
+                self._engines_created += 1
+                
+                # Log OSS capabilities
+                logger.info(f"OSS Engine Created: {type(oss_engine).__name__}")
+                logger.info(f"OSS Limits: 1000 incident nodes max, advisory mode only")
+                
+                if hasattr(oss_engine, '_requires_enterprise') and oss_engine._requires_enterprise:
+                    logger.info(
+                        "💡 Upgrade to Enterprise for more features: "
+                        "https://arf.dev/enterprise"
+                    )
+                
+                return oss_engine
             
         except Exception as e:
             logger.error(f"Failed to create engine: {e}")
-            # Fallback to basic engine
+            # Fallback to basic engine - use different variable names to avoid redefinition
             from .reliability import V3ReliabilityEngine as BaseV3Engine
-            base_engine = BaseV3Engine()
-            engine = OSSV3ReliabilityEngine(base_engine)
-            return engine
+            fallback_base_engine = BaseV3Engine()
+            fallback_engine = OSSV3ReliabilityEngine(fallback_base_engine)
+            return fallback_engine
     
     def create_enhanced_engine(
         self, 
@@ -227,19 +241,19 @@ class EngineFactory:
         
         from .v3_reliability import V3ReliabilityEngine as EnhancedV3Engine
         
-        base_engine: EnhancedV3Engine = EnhancedV3Engine(
+        enhanced_base_engine: EnhancedV3Engine = EnhancedV3Engine(
             rag_graph=rag_graph,
             mcp_server=mcp_server
         )
         
         # Wrap in OSS wrapper with capabilities
-        engine: OSSEnhancedV3ReliabilityEngine = OSSEnhancedV3ReliabilityEngine(
-            base_engine,
+        oss_enhanced_engine: OSSEnhancedV3ReliabilityEngine = OSSEnhancedV3ReliabilityEngine(
+            enhanced_base_engine,
             enable_rag=enable_rag,
             rag_nodes_limit=rag_nodes_limit
         )
         
-        return engine
+        return oss_enhanced_engine
     
     def get_oss_engine_capabilities(self) -> Dict[str, Any]:
         """
@@ -297,7 +311,7 @@ class EngineFactory:
             Validation results
         """
         violations: list[str] = []
-        warnings: list[str] = []  # FIXED: Added type annotation
+        warnings: list[str] = []
         
         # Check RAG limits
         rag_nodes = engine_config.get("rag_max_incident_nodes", 0)
