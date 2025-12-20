@@ -1,12 +1,58 @@
 """
 OSS Edition Components
 Apache 2.0 Licensed
+
+Copyright 2025 Juan Petter
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
 """
 
-from .constants import get_oss_capabilities
-from .healing_intent import HealingIntent
+from .constants import (
+    get_oss_capabilities,
+    MAX_INCIDENT_HISTORY,
+    MCP_MODES_ALLOWED,
+    EXECUTION_ALLOWED,
+    validate_oss_config,
+    check_oss_compliance,
+)
+from .healing_intent import (
+    HealingIntent,
+    HealingIntentSerializer,
+    IntentSource,
+    IntentStatus,
+    create_rollback_intent,
+    create_restart_intent,
+    create_scale_out_intent,
+)
+
 
 __all__ = [
+    # Constants
     "get_oss_capabilities",
+    "MAX_INCIDENT_HISTORY",
+    "MCP_MODES_ALLOWED",
+    "EXECUTION_ALLOWED",
+    "validate_oss_config",
+    "check_oss_compliance",
+    
+    # Healing Intent
     "HealingIntent",
+    "HealingIntentSerializer",
+    "IntentSource",
+    "IntentStatus",
+    
+    # Factory functions
+    "create_rollback_intent",
+    "create_restart_intent",
+    "create_scale_out_intent",
 ]
