@@ -1,6 +1,3 @@
-# agentic_reliability_framework/engine/engine_factory.py
-# REPLACE THE ENTIRE FILE WITH:
-
 """
 Engine Factory - OSS Edition Only
 Creates OSS-compatible reliability engines with hard limits
