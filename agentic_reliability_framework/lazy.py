@@ -25,6 +25,7 @@ def get_engine() -> Any:
     
     if _ENGINE is None:
         try:
+            # FIXED: Use create_engine from engine_factory
             from .engine.engine_factory import create_engine
             _ENGINE = create_engine()
             logger.info("Lazy-loaded reliability engine")
