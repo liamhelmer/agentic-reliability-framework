@@ -180,7 +180,8 @@ class HealingIntent:
                     f"{self.MAX_SIMILAR_INCIDENTS}"
                 )
             
-            for i, incident in enumerate(self.similar_incidents):
+            for i, incident_item in enumerate(self.similar_incidents):
+                incident = incident_item  # Local variable for type inference
                 if not isinstance(incident, dict):
                     errors.append(f"Similar incident {i} must be a dictionary")
                 elif "similarity" in incident:
@@ -600,7 +601,7 @@ class HealingIntent:
         # Calculate success rate if not provided
         if success_rate is None:
             successful = sum(1 for inc in similar_incidents if inc.get("success", False))
-            # similar_incidents is guaranteed to be truthy here, so no need for ternary
+            # similar_incidents is guaranteed to be truthy here (otherwise exception raised above)
             success_rate = successful / len(similar_incidents)
         
         # Generate justification
