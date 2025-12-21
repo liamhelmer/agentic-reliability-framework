@@ -185,11 +185,11 @@ def __getattr__(name: str) -> Any:
     try:
         # Handle relative imports for OSS modules
         if module_name.startswith("."):
-            module: Any = import_module(module_name, package=__package__)
+            imported_module: Any = import_module(module_name, package=__package__)  # FIXED: Changed variable name
         else:
-            module: Any = import_module(module_name, package="agentic_reliability_framework")
+            imported_module: Any = import_module(module_name)  # FIXED: Changed variable name and removed package parameter
             
-        return getattr(module, attr_name)
+        return getattr(imported_module, attr_name)
     except ImportError as exc:
         # If OSS module not found, provide helpful error message
         if module_name.startswith("."):
@@ -199,11 +199,11 @@ def __getattr__(name: str) -> Any:
                 f"Expected module: {module_name}"
             ) from exc
         raise AttributeError(
-            f"module {module.__name__!r} has no attribute {attr_name!r}"
+            f"module not found: {module_name}"
         ) from exc
     except AttributeError as exc:
         raise AttributeError(
-            f"module {module.__name__!r} has no attribute {attr_name!r}"
+            f"module has no attribute {attr_name!r}"
         ) from exc
 
 
