@@ -9,7 +9,7 @@ that enforces OSS edition boundaries at runtime.
 
 import os
 import warnings
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from dataclasses import dataclass, field
 
 from ..constants import (
@@ -54,7 +54,7 @@ class OSSConfig:
     _original_config: Optional[Any] = field(default=None, init=False, repr=False)
     
     # OSS boundary violations detected
-    _violations: list = field(default_factory=list, init=False, repr=False)
+    _violations: List[str] = field(default_factory=list, init=False, repr=False)
     
     # Cache for performance
     _config_cache: Dict[str, Any] = field(default_factory=dict, init=False, repr=False)
@@ -334,7 +334,7 @@ class OSSConfig:
         return self._original_config
     
     @property
-    def violations(self) -> list:
+    def violations(self) -> List[str]:
         """Get list of OSS boundary violations detected"""
         return self._violations.copy()
     
@@ -488,16 +488,8 @@ class OSSConfig:
 # Singleton instance for easy import
 oss_config = OSSConfig()
 
-# Export OSS edition information
-OSS_EDITION = OSS_EDITION
-OSS_LICENSE = OSS_LICENSE
-ENTERPRISE_UPGRADE_URL = ENTERPRISE_UPGRADE_URL
-
 # Export
 __all__ = [
     "OSSConfig",
     "oss_config",
-    "OSS_EDITION",
-    "OSS_LICENSE",
-    "ENTERPRISE_UPGRADE_URL",
 ]
