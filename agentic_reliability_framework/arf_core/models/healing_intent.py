@@ -19,7 +19,7 @@ limitations under the License.
 """
 
 from dataclasses import dataclass, field, asdict
-from typing import Dict, Any, Optional, List, ClassVar, Union
+from typing import Dict, Any, Optional, List, ClassVar, Union, Tuple
 from datetime import datetime
 import hashlib
 import json
@@ -138,7 +138,7 @@ class HealingIntent:
     
     def _validate_oss_boundaries(self) -> None:
         """Validate all fields of the HealingIntent against OSS limits"""
-        errors = []
+        errors: List[str] = []
         
         # Validate confidence range
         if not (self.MIN_CONFIDENCE <= self.confidence <= self.MAX_CONFIDENCE):
@@ -661,17 +661,20 @@ class HealingIntent:
         Ensures that parameter order and minor format differences
         don't affect the deterministic ID.
         """
-        normalized = {}
+        normalized: Dict[str, Any] = {}
         
         for key, value in sorted(params.items()):
             if isinstance(value, (int, float, str, bool, type(None))):
                 normalized[key] = value
             elif isinstance(value, (list, tuple)):
                 # Recursively normalize list items
-                normalized[key] = tuple(
-                    self._normalize_parameters(v) if isinstance(v, dict) else v
-                    for v in value
-                )
+                normalized_items: List[Any] = []
+                for v in value:
+                    if isinstance(v, dict):
+                        normalized_items.append(self._normalize_parameters(v))
+                    else:
+                        normalized_items.append(v)
+                normalized[key] = tuple(normalized_items)
             elif isinstance(value, dict):
                 normalized[key] = self._normalize_parameters(value)
             else:
@@ -1028,6 +1031,5 @@ __all__ = [
     "create_rollback_intent",
     "create_restart_intent",
     "create_scale_out_intent",
-    "create_oss_advisory_intent",
     "create_oss_advisory_intent",
 ]
