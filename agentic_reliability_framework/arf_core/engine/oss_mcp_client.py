@@ -15,7 +15,8 @@ import asyncio
 import logging
 import time
 import uuid
-from typing import Dict, Any, Optional, List, Union, Tuple
+import json
+from typing import Dict, Any, Optional, List, Union, Tuple, cast
 from dataclasses import dataclass, field
 from datetime import datetime
 
@@ -550,11 +551,18 @@ class OSSMCPClient:
             
             # Create mock event for similarity search
             from agentic_reliability_framework.models import ReliabilityEvent
-            from agentic_reliability_framework.engine.interfaces import EventSeverity
+            
+            # Handle EventSeverity with fallback if not available
+            try:
+                from agentic_reliability_framework.engine.interfaces import EventSeverity
+                severity = EventSeverity.MEDIUM
+            except (ImportError, AttributeError):
+                # Fallback to string if enum not available
+                severity = "MEDIUM"
             
             event = ReliabilityEvent(
                 component=component,
-                severity=EventSeverity.MEDIUM,  # FIXED: Use enum instead of string
+                severity=severity,
                 latency_p99=context.get("latency_p99", 100) if context else 100,
                 error_rate=context.get("error_rate", 0.05) if context else 0.05,
                 throughput=context.get("throughput", 1000) if context else 1000,
@@ -609,11 +617,26 @@ class OSSMCPClient:
             return []
     
     def _calculate_rag_similarity_score(self, similar_incidents: List[Dict[str, Any]]) -> float:
-        """Calculate aggregate RAG similarity score"""
+        """
+        Calculate aggregate RAG similarity score
+        
+        Returns:
+            Float between 0.0 and 1.0 representing average similarity
+        """
         if not similar_incidents:
             return 0.0
         
-        similarities = [inc.get("similarity", 0.0) for inc in similar_incidents]
+        similarities: List[float] = []
+        for inc in similar_incidents:
+            similarity = inc.get("similarity")
+            if isinstance(similarity, (int, float)):
+                # Ensure similarity is within 0.0-1.0 range
+                clamped_similarity = max(0.0, min(1.0, float(similarity)))
+                similarities.append(clamped_similarity)
+        
+        if not similarities:
+            return 0.0
+        
         return sum(similarities) / len(similarities)
     
     def _calculate_confidence(
@@ -776,10 +799,14 @@ class OSSMCPClient:
         parameters: Dict[str, Any],
         context: Optional[Dict[str, Any]]
     ) -> str:
-        """Create cache key for similarity search"""
-        import json
-        param_str = json.dumps(parameters, sort_keys=True)
-        context_str = json.dumps(context, sort_keys=True) if context else ""
+        """
+        Create cache key for similarity search
+        
+        Returns:
+            String cache key based on component, parameters, and context
+        """
+        param_str = json.dumps(parameters, sort_keys=True, default=str)
+        context_str = json.dumps(context, sort_keys=True, default=str) if context else ""
         return f"{component}:{hash(param_str)}:{hash(context_str)}"
     
     async def execute_tool(self, request_dict: Dict[str, Any]) -> Dict[str, Any]:
