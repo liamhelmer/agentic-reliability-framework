@@ -20,6 +20,9 @@ from typing import Dict, Any, Optional, List, Union, Tuple, cast
 from dataclasses import dataclass, field
 from datetime import datetime
 
+# IMPORT FIX: Import EventSeverity and ReliabilityEvent from models module
+from agentic_reliability_framework.models import ReliabilityEvent, EventSeverity
+
 from ...constants import (
     OSS_EDITION,
     OSS_LICENSE,
@@ -550,31 +553,14 @@ class OSSMCPClient:
                 return []
             
             # Create mock event for similarity search
-            from agentic_reliability_framework.models import ReliabilityEvent
+            # EventSeverity and ReliabilityEvent are imported at module level
             
-            # Handle EventSeverity - check multiple possible locations
-            severity = "MEDIUM"  # Default fallback
-            try:
-                # Try primary location
-                from agentic_reliability_framework.engine.interfaces import EventSeverity
-                severity = EventSeverity.MEDIUM
-            except (ImportError, AttributeError):
-                try:
-                    # Try models module
-                    from agentic_reliability_framework.models import EventSeverity as ModelsEventSeverity
-                    severity = ModelsEventSeverity.MEDIUM
-                except (ImportError, AttributeError):
-                    # Try looking for Severity enum instead
-                    try:
-                        from agentic_reliability_framework.models import Severity
-                        severity = Severity.MEDIUM
-                    except (ImportError, AttributeError):
-                        # Final fallback to string
-                        severity = "MEDIUM"
+            # Use EventSeverity enum - CORRECTED: No fallback imports needed
+            severity = EventSeverity.MEDIUM
             
             event = ReliabilityEvent(
                 component=component,
-                severity=severity,
+                severity=severity,  # Correct type: EventSeverity enum
                 latency_p99=context.get("latency_p99", 100) if context else 100,
                 error_rate=context.get("error_rate", 0.05) if context else 0.05,
                 throughput=context.get("throughput", 1000) if context else 1000,
