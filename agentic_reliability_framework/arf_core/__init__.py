@@ -184,10 +184,11 @@ def __getattr__(name: str) -> Any:
     
     try:
         # Handle relative imports for OSS modules
+        imported_module: Any
         if module_name.startswith("."):
-            imported_module: Any = import_module(module_name, package=__package__)  # FIXED: Changed variable name
+            imported_module = import_module(module_name, package=__package__)
         else:
-            imported_module: Any = import_module(module_name)  # FIXED: Changed variable name and removed package parameter
+            imported_module = import_module(module_name)
             
         return getattr(imported_module, attr_name)
     except ImportError as exc:
