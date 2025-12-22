@@ -7,7 +7,7 @@ name = "agentic-reliability-framework"
 version = "3.3.0"
 description = "Agentic Reliability Framework - OSS Edition (Apache 2.0) - Production-grade multi-agent AI for reliability monitoring with advisory-only healing recommendations"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.10"  # CHANGED: Support Python 3.10+
 license = {file = "LICENSE"}
 authors = [
     {name = "Juan Petter", email = "petter2025us@outlook.com"}
@@ -19,6 +19,7 @@ classifiers = [
     "License :: OSI Approved :: Apache Software License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",  # ADDED
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Topic :: System :: Monitoring",
@@ -44,7 +45,7 @@ dependencies = [
 
 [project.optional-dependencies]
 enterprise = [
-    "arf-enterprise>=1.0.0",  # Optional Enterprise upgrade
+    "agentic-reliability-enterprise>=1.0.0",  # FIXED: Correct package name
 ]
 dev = [
     "pytest>=7.4.0",
@@ -64,13 +65,13 @@ Issues = "https://github.com/petterjuan/agentic-reliability-framework/issues"
 
 [project.scripts]
 arf = "agentic_reliability_framework.cli:main"
-arf-oss = "agentic_reliability_framework.cli:main"  # Alias for clarity
+arf-oss = "agentic_reliability_framework.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
 include = [
     "agentic_reliability_framework*",
-    "arf_core*",  # Include arf_core subpackage
+    "arf_core*",
 ]
 
 [tool.setuptools.package-data]
@@ -87,10 +88,10 @@ include = [
 
 [tool.black]
 line-length = 100
-target-version = ['py311']
+target-version = ['py310']  # CHANGED: from py311 to py310
 
 [tool.ruff]
 line-length = 100
-target-version = "py311"
+target-version = "py310"  # CHANGED: from py311 to py310
 select = ["E", "W", "F", "I"]
 ignore = ["E501", "W503", "F401"]
