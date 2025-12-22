@@ -1,0 +1,33 @@
+name: OSS Integration Test
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test-oss-integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          
+      - name: Install dependencies
+        run: |
+          pip install -e .
+          
+      - name: Run OSS Integration Test
+        run: |
+          python agentic_reliability_framework/tests/test_healing_intent_integration.py
+          
+      - name: Upload test artifacts
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: oss-test-outputs
+          path: agentic_reliability_framework/tests/test_outputs/
