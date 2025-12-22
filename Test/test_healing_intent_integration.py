@@ -19,28 +19,38 @@ def test_create_healing_intent():
     print("=" * 60)
     
     try:
-        # Import from your OSS structure
-        # Option 1: Try arf_core first (new structure)
-        try:
-            from arf_core.models.healing_intent import (
-                HealingIntent,
-                IntentSource,
-                HealingIntentSerializer,
-                create_rollback_intent
-            )
-            print("✅ Imported from arf_core.models.healing_intent")
-        except ImportError:
-            # Option 2: Try oss module (separate structure)
-            from oss.healing_intent import (
-                HealingIntent,
-                IntentSource,
-                HealingIntentSerializer,
-                create_rollback_intent
-            )
-            print("✅ Imported from oss.healing_intent")
+        # Import from your exact structure
+        from arf_core.models.healing_intent import (
+            HealingIntent,
+            IntentSource,
+            IntentStatus,
+            HealingIntentSerializer,
+            create_rollback_intent,
+            create_restart_intent,
+            create_scale_out_intent,
+            create_oss_advisory_intent
+        )
         
-        # Create a sample healing intent for rollback
-        intent = create_rollback_intent(
+        # Also import OSS constants to verify
+        try:
+            from arf_core.constants import (
+                OSS_EDITION,
+                OSS_LICENSE,
+                ENTERPRISE_UPGRADE_URL,
+                EXECUTION_ALLOWED
+            )
+            print("✅ Imported OSS constants:")
+            print(f"   Edition: {OSS_EDITION}")
+            print(f"   License: {OSS_LICENSE}")
+            print(f"   Execution allowed: {EXECUTION_ALLOWED}")
+        except ImportError:
+            print("⚠️  Could not import OSS constants, using defaults")
+        
+        print("✅ Imported HealingIntent from arf_core.models.healing_intent")
+        
+        # Test 1: Create rollback intent using factory function
+        print("\n🔧 Test 1: Creating rollback intent...")
+        rollback_intent = create_rollback_intent(
             component="api-service",
             revision="previous",
             justification="High latency spike detected (p99: 450ms vs 200ms SLA)",
@@ -56,61 +66,94 @@ def test_create_healing_intent():
             ]
         )
         
-        print(f"\n✅ Created HealingIntent:")
-        print(f"   Action: {intent.action}")
-        print(f"   Component: {intent.component}")
-        print(f"   Confidence: {intent.confidence:.2f}")
-        print(f"   Deterministic ID: {intent.deterministic_id}")
-        print(f"   Is executable: {intent.is_executable}")
+        print(f"✅ Created rollback intent:")
+        print(f"   Action: {rollback_intent.action}")
+        print(f"   Component: {rollback_intent.component}")
+        print(f"   Confidence: {rollback_intent.confidence:.2f}")
+        print(f"   OSS Edition: {rollback_intent.oss_edition}")
+        print(f"   Execution allowed: {rollback_intent.execution_allowed}")
+        print(f"   Status: {rollback_intent.status.value}")
         
-        # Convert to Enterprise-ready JSON
-        enterprise_json = HealingIntentSerializer.to_enterprise_json(intent)
+        # Test 2: Verify OSS restrictions
+        print("\n🔒 Test 2: Verifying OSS restrictions...")
+        if rollback_intent.oss_edition != "oss":
+            print(f"❌ ERROR: Expected OSS edition 'oss', got '{rollback_intent.oss_edition}'")
+            return False
+        
+        if rollback_intent.execution_allowed:
+            print("❌ ERROR: OSS intent should not allow execution")
+            return False
+        
+        if rollback_intent.status != IntentStatus.OSS_ADVISORY_ONLY:
+            print(f"❌ ERROR: OSS intent should be OSS_ADVISORY_ONLY, got {rollback_intent.status}")
+            return False
+        
+        print("✅ OSS restrictions verified correctly")
+        
+        # Test 3: Create Enterprise request
+        print("\n📤 Test 3: Creating Enterprise request...")
+        enterprise_request = rollback_intent.to_enterprise_request()
+        
+        required_fields = ["intent_id", "action", "component", "requires_enterprise", "oss_edition"]
+        for field in required_fields:
+            if field not in enterprise_request:
+                print(f"❌ ERROR: Missing required field: {field}")
+                return False
+        
+        print(f"✅ Enterprise request created:")
+        print(f"   Intent ID: {enterprise_request.get('intent_id', 'N/A')}")
+        print(f"   Requires Enterprise: {enterprise_request.get('requires_enterprise', False)}")
+        print(f"   OSS Edition: {enterprise_request.get('oss_edition', 'N/A')}")
+        print(f"   Execution allowed: {enterprise_request.get('execution_allowed', False)}")
+        
+        if not enterprise_request.get("requires_enterprise"):
+            print("❌ ERROR: OSS intent should require Enterprise")
+            return False
+        
+        # Test 4: Serialization to JSON
+        print("\n📄 Test 4: Testing serialization...")
         
         # Save to file for handoff
         output_dir = Path(__file__).parent / "test_outputs"
         output_dir.mkdir(exist_ok=True)
         
-        output_file = output_dir / "healing_intent_for_enterprise.json"
-        with open(output_file, "w") as f:
+        # Enterprise-ready JSON
+        enterprise_json = HealingIntentSerializer.to_enterprise_json(rollback_intent)
+        enterprise_file = output_dir / "healing_intent_for_enterprise.json"
+        with open(enterprise_file, "w") as f:
             f.write(enterprise_json)
         
-        print(f"\n📤 HealingIntent ready for Enterprise handoff:")
-        print(f"   File saved: {output_file}")
-        print(f"   File size: {len(enterprise_json)} bytes")
-        
-        # Create human-readable version
+        # Human-readable version
+        serialized = HealingIntentSerializer.serialize(rollback_intent)
         human_file = output_dir / "healing_intent_human_readable.json"
-        human_readable = HealingIntentSerializer.serialize(intent)
         with open(human_file, "w") as f:
-            json.dump(human_readable, f, indent=2)
+            json.dump(serialized, f, indent=2)
         
-        # Print Enterprise request summary
-        print("\n📋 Enterprise Request Summary:")
-        enterprise_request = intent.to_enterprise_request()
-        print(f"   Action: {enterprise_request['action']}")
-        print(f"   Component: {enterprise_request['component']}")
-        print(f"   Requires Enterprise: {enterprise_request['requires_enterprise']}")
-        print(f"   OSS Edition: {enterprise_request['oss_edition']}")
+        print(f"✅ Files saved:")
+        print(f"   Enterprise JSON: {enterprise_file}")
+        print(f"   Human readable: {human_file}")
+        print(f"   Enterprise JSON size: {len(enterprise_json)} bytes")
         
-        if enterprise_request.get('upgrade_url'):
-            print(f"   Upgrade URL: {enterprise_request['upgrade_url']}")
+        # Test 5: Verify upgrade information
+        print("\n🔼 Test 5: Checking upgrade information...")
+        if "upgrade_url" not in enterprise_request:
+            print("⚠️  WARNING: Missing upgrade_url in Enterprise request")
+        else:
+            print(f"✅ Upgrade URL: {enterprise_request['upgrade_url']}")
         
-        # Print a few enterprise features for verification
-        if enterprise_request.get('enterprise_features'):
-            features = enterprise_request['enterprise_features']
-            print(f"   Enterprise Features ({len(features)} total):")
-            for i, feature in enumerate(features[:3]):  # Show first 3
-                print(f"     • {feature}")
-            if len(features) > 3:
-                print(f"     • ... and {len(features) - 3} more")
+        if "enterprise_features" in enterprise_request:
+            features = enterprise_request["enterprise_features"]
+            print(f"✅ Enterprise features available: {len(features)} total")
+            if features:
+                print(f"   Sample: {features[0]}, {features[1]}, ...")
         
         return True
         
     except ImportError as e:
         print(f"\n❌ Import error: {e}")
-        print("Available modules:")
-        print("  - Try: from arf_core.models.healing_intent import ...")
-        print("  - Or: from oss.healing_intent import ...")
+        print("\nAvailable modules in arf_core.models:")
+        print("  - Try: from arf_core.models.healing_intent import HealingIntent")
+        print("  - Check path: agentic_reliability_framework/arf_core/models/healing_intent.py")
         return False
     except Exception as e:
         print(f"\n❌ Error: {e}")
@@ -118,44 +161,42 @@ def test_create_healing_intent():
         traceback.print_exc()
         return False
 
-def test_oss_mcp_advisory_only():
-    """Verify OSS MCP server only provides advisory responses"""
+def test_mcp_integration():
+    """Test that OSS MCP server correctly uses HealingIntent"""
     print("\n" + "=" * 60)
-    print("OSS MCP Server Validation (Advisory Only)")
+    print("OSS MCP Server Integration Test")
     print("=" * 60)
     
     try:
-        # Import your existing MCP server
+        # Import MCP server
         from agentic_reliability_framework.engine.mcp_server import MCPServer
         
         print("✅ Imported OSS MCPServer")
         
+        # Create server instance
         server = MCPServer()
         stats = server.get_server_stats()
         
         print(f"\n📊 OSS MCP Server Stats:")
         print(f"   Edition: {stats.get('edition', 'unknown')}")
         print(f"   Mode: {stats.get('mode', 'unknown')}")
-        print(f"   Tools: {stats.get('registered_tools', 0)}")
+        print(f"   Tools registered: {stats.get('registered_tools', 0)}")
         
         # Verify OSS restrictions
         oss_limits = stats.get('oss_limits', {})
-        print(f"\n🔒 OSS Restrictions:")
-        print(f"   Execution allowed: {oss_limits.get('execution_allowed', False)}")
-        print(f"   Max incidents: {oss_limits.get('max_incidents', 'unknown')}")
+        if oss_limits:
+            print(f"\n🔒 OSS Limits:")
+            print(f"   Execution allowed: {oss_limits.get('execution_allowed', False)}")
+            print(f"   Max incidents: {oss_limits.get('max_incidents', 'unknown')}")
         
-        if oss_limits.get('execution_allowed') is True:
-            print("   ⚠️  WARNING: OSS should NOT allow execution!")
-            return False
-        
-        # Test a tool request
-        print("\n🔍 Testing tool request (should be advisory only)...")
+        # Test that OSS only provides advisory responses
+        print("\n🔍 Testing advisory-only behavior...")
         
         request = {
-            "tool": "rollback",
-            "component": "api-service",
-            "parameters": {"revision": "previous"},
-            "justification": "Test from OSS - should not execute",
+            "tool": "restart_container",
+            "component": "database-service",
+            "parameters": {"container_id": "db-12345"},
+            "justification": "Test from OSS - should be advisory only",
             "metadata": {
                 "incident_id": "test_oss_001",
                 "environment": "staging"
@@ -168,23 +209,22 @@ def test_oss_mcp_advisory_only():
         
         response = asyncio.run(make_request())
         
-        print(f"\n📨 OSS MCP Response:")
+        print(f"📨 MCP Response:")
         print(f"   Status: {response.get('status')}")
         print(f"   Executed: {response.get('executed', False)}")
-        print(f"   Message: {response.get('message', '')[:80]}...")
+        print(f"   Message: {response.get('message', '')[:60]}...")
         
-        # Verify it's advisory only
-        if response.get('executed', False) is True:
-            print("   ❌ ERROR: OSS executed a tool! Should be advisory only.")
+        # Verify it didn't execute
+        if response.get('executed', False):
+            print("❌ ERROR: OSS executed a tool! Should be advisory only.")
             return False
         
+        # Check for Enterprise requirement
         result = response.get('result', {})
         if result.get('requires_enterprise'):
-            print("   ✅ Correctly indicates Enterprise requirement")
-            if result.get('upgrade_url'):
-                print(f"   Upgrade URL: {result.get('upgrade_url')}")
+            print("✅ Correctly indicates Enterprise requirement")
         else:
-            print("   ⚠️  Missing 'requires_enterprise' flag")
+            print("⚠️  Missing 'requires_enterprise' flag")
         
         return True
         
@@ -194,48 +234,120 @@ def test_oss_mcp_advisory_only():
         traceback.print_exc()
         return False
 
-def test_healing_intent_from_mcp_request():
-    """Test creating HealingIntent from MCP request (backward compatibility)"""
+def test_healing_intent_from_mcp():
+    """Test backward compatibility with existing MCP requests"""
     print("\n" + "=" * 60)
-    print("HealingIntent from MCP Request Test")
+    print("Backward Compatibility Test")
     print("=" * 60)
     
     try:
-        # Import based on your structure
-        try:
-            from arf_core.models.healing_intent import HealingIntent
-        except ImportError:
-            from oss.healing_intent import HealingIntent
+        from arf_core.models.healing_intent import HealingIntent
         
         # Simulate an MCP request from existing code
         mcp_request = {
-            "tool": "restart_container",
-            "component": "database-service",
-            "parameters": {"container_id": "db-12345"},
-            "justification": "Database connection pool exhausted",
+            "tool": "scale_out",
+            "component": "api-service",
+            "parameters": {"scale_factor": 3},
+            "justification": "High traffic load detected",
             "timestamp": 1734710400.0,
             "metadata": {
-                "incident_id": "inc_20241220_002",
+                "incident_id": "inc_20241220_003",
                 "environment": "production",
-                "severity": "high"
+                "severity": "high",
+                "oss_edition": "oss",
+                "requires_enterprise": True,
+                "execution_allowed": False
             }
         }
         
-        # Convert MCP request to HealingIntent
+        # Convert to HealingIntent
         intent = HealingIntent.from_mcp_request(mcp_request)
         
         print(f"✅ Created HealingIntent from MCP request:")
         print(f"   Action: {intent.action}")
         print(f"   Component: {intent.component}")
-        print(f"   Incident ID: {intent.incident_id}")
+        print(f"   OSS Edition: {intent.oss_edition}")
+        print(f"   Execution allowed: {intent.execution_allowed}")
+        
+        # Verify OSS metadata was preserved
+        if intent.oss_edition != "oss":
+            print("❌ ERROR: OSS edition not preserved")
+            return False
+        
+        if intent.execution_allowed:
+            print("❌ ERROR: Execution should not be allowed")
+            return False
         
         # Test serialization
-        import json
         serialized = intent.to_dict()
         print(f"\n📄 Serialization test:")
-        print(f"   Keys: {list(serialized.keys())}")
+        print(f"   Keys in dict: {len(serialized)}")
+        
+        required_keys = ["action", "component", "oss_edition", "requires_enterprise"]
+        for key in required_keys:
+            if key not in serialized:
+                print(f"❌ ERROR: Missing key: {key}")
+                return False
+        
+        print("✅ All required keys present")
         
         return True
+        
+    except Exception as e:
+        print(f"\n❌ Error: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+def test_oss_factory_functions():
+    """Test all OSS factory functions"""
+    print("\n" + "=" * 60)
+    print("OSS Factory Functions Test")
+    print("=" * 60)
+    
+    try:
+        from arf_core.models.healing_intent import (
+            create_rollback_intent,
+            create_restart_intent,
+            create_scale_out_intent,
+            create_oss_advisory_intent,
+            IntentStatus
+        )
+        
+        tests = [
+            ("Rollback", lambda: create_rollback_intent("api-service", "previous")),
+            ("Restart", lambda: create_restart_intent("database-service")),
+            ("Scale Out", lambda: create_scale_out_intent("api-service", 3)),
+            ("Generic Advisory", lambda: create_oss_advisory_intent(
+                "circuit_breaker", "payment-service", {"threshold": 0.8},
+                "High error rate detected"
+            ))
+        ]
+        
+        all_passed = True
+        for name, factory in tests:
+            intent = factory()
+            
+            # Check OSS properties
+            if intent.oss_edition != "oss":
+                print(f"❌ {name}: Wrong OSS edition: {intent.oss_edition}")
+                all_passed = False
+                continue
+            
+            if intent.execution_allowed:
+                print(f"❌ {name}: Execution should not be allowed")
+                all_passed = False
+                continue
+            
+            if intent.status != IntentStatus.OSS_ADVISORY_ONLY:
+                print(f"❌ {name}: Wrong status: {intent.status}")
+                all_passed = False
+                continue
+            
+            print(f"✅ {name}: OSS advisory intent created correctly")
+            print(f"   Action: {intent.action}, Component: {intent.component}")
+        
+        return all_passed
         
     except Exception as e:
         print(f"\n❌ Error: {e}")
@@ -247,11 +359,14 @@ if __name__ == "__main__":
     print("\n" + "=" * 60)
     print("OSS → Enterprise Integration Test Suite")
     print("=" * 60)
+    print("Testing path: arf_core.models.healing_intent")
+    print("=" * 60)
     
     tests = [
         ("HealingIntent Creation", test_create_healing_intent),
-        ("OSS MCP Advisory Only", test_oss_mcp_advisory_only),
-        ("MCP Request Compatibility", test_healing_intent_from_mcp_request),
+        ("MCP Integration", test_mcp_integration),
+        ("Backward Compatibility", test_healing_intent_from_mcp),
+        ("Factory Functions", test_oss_factory_functions),
     ]
     
     results = []
@@ -260,6 +375,8 @@ if __name__ == "__main__":
         print("-" * 40)
         success = test_func()
         results.append((test_name, success))
+        if not success:
+            print(f"⏹️  Test failed: {test_name}")
     
     print("\n" + "=" * 60)
     print("TEST SUMMARY")
@@ -274,11 +391,14 @@ if __name__ == "__main__":
     
     print("\n" + "=" * 60)
     if all_passed:
-        print("🎉 All OSS tests passed! HealingIntent ready for Enterprise.")
+        print("🎉 All OSS tests passed!")
+        print("\nGenerated files in tests/test_outputs/:")
+        print("  • healing_intent_for_enterprise.json - For Enterprise execution")
+        print("  • healing_intent_human_readable.json - For debugging")
         print("\nNext steps:")
-        print("1. Check generated files in tests/test_outputs/")
-        print("2. Copy healing_intent_for_enterprise.json to Enterprise repo")
-        print("3. Run Enterprise execution tests")
+        print("1. Copy healing_intent_for_enterprise.json to Enterprise repo")
+        print("2. Run Enterprise execution tests")
+        print("3. Verify OSS→Enterprise handoff works")
     else:
         print("❌ Some tests failed. Check OSS implementation.")
     
