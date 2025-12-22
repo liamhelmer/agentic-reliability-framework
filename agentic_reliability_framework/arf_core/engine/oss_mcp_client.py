@@ -20,8 +20,7 @@ from typing import Dict, Any, Optional, List, Union, Tuple, cast
 from dataclasses import dataclass, field
 from datetime import datetime
 
-# IMPORT FIX: Import EventSeverity and ReliabilityEvent from models module
-from agentic_reliability_framework.models import ReliabilityEvent, EventSeverity
+from arf_core.models import ReliabilityEvent, EventSeverity
 
 from ...constants import (
     OSS_EDITION,
