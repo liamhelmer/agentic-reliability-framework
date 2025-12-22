@@ -7,7 +7,7 @@ name = "agentic-reliability-framework"
 version = "3.3.0"
 description = "Agentic Reliability Framework - OSS Edition (Apache 2.0) - Production-grade multi-agent AI for reliability monitoring with advisory-only healing recommendations"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.10"
 license = {file = "LICENSE"}
 authors = [
     {name = "Juan Petter", email = "petter2025us@outlook.com"}
