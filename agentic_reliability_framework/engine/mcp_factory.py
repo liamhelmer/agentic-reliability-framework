@@ -45,20 +45,28 @@ class OSSIntegrationManager:
     
     def _check_license_key_env(self) -> bool:
         """
-        Check for license key environment variables
+        OSS EDITION: Never checks license keys
         
-        OSS EDITION: Only checks to provide upgrade prompts
-        Never validates or uses license keys
+        Returns:
+            Always False in OSS edition
         """
+        # OSS EDITION: Never checks license keys
+        # This is an Enterprise-only feature
+        
+        # We can check for environment variables to provide upgrade prompts
+        # but we never validate or use them
         env_vars = [
             "ARF_LICENSE_KEY",
             "ARF_ENTERPRISE_LICENSE", 
             "ARF_COMMERCIAL_LICENSE"
         ]
         
+        # Only check to provide helpful upgrade messages
         for env_var in env_vars:
             if os.getenv(env_var):
-                logger.debug(f"License key found in {env_var} (Enterprise feature)")
+                logger.debug(f"Environment variable {env_var} found")
+                # Return True ONLY to trigger upgrade message
+                # NOT for actual license validation
                 return True
         
         return False
