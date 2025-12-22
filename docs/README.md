@@ -1,23 +1,21 @@
 <p align="center">
-  <img src="https://dummyimage.com/1200x260/000/fff&text=AGENTIC+RELIABILITY+FRAMEWORK" width="100%" alt="Agentic Reliability Framework Banner" />
+  <img src="https://dummyimage.com/1200x260/0d1117/00d4ff&text=AGENTIC+RELIABILITY+FRAMEWORK" width="100%" alt="Agentic Reliability Framework Banner" />
 </p>
 
-<h2 align="center"><p align="center">
-  Enterprise-Grade Multi-Agent AI for Autonomous System Reliability & Self-Healing
-</p></h2>
+<h2 align="center">Enterprise-Grade Multi-Agent AI for Autonomous System Reliability & Self-Healing</h2>
 
-> **Fortune 500-grade AI system for production reliability monitoring**  
-> Built by engineers who managed $1M+ incidents at scale
+> **Production-ready AI system for mission-critical reliability monitoring**  
+> Battle-tested architecture for autonomous incident detection and healing
 
 <div align="center">
 
-[![PyPI version](https://img.shields.io/pypi/v/agentic-reliability-framework?style=for-the-badge)](https://pypi.org/project/agentic-reliability-framework/)
-[![Python Versions](https://img.shields.io/pypi/pyversions/agentic-reliability-framework?style=for-the-badge)](https://pypi.org/project/agentic-reliability-framework/)
-[![Tests](https://img.shields.io/badge/tests-157%2F158%20passing-brightgreen?style=for-the-badge)](https://github.com/petterjuan/agentic-reliability-framework/actions)
-[![License](https://img.shields.io/badge/license-MIT-green?style=for-the-badge)](./LICENSE)
-[![HuggingFace](https://img.shields.io/badge/🤗-Live%20Demo-yellow?style=for-the-badge)](https://huggingface.co/spaces/petter2025/agentic-reliability-framework)
+[![PyPI version](https://img.shields.io/pypi/v/agentic-reliability-framework?style=for-the-badge&logo=pypi&logoColor=white)](https://pypi.org/project/agentic-reliability-framework/)
+[![Python Versions](https://img.shields.io/pypi/pyversions/agentic-reliability-framework?style=for-the-badge&logo=python&logoColor=white)](https://pypi.org/project/agentic-reliability-framework/)
+[![Tests](https://img.shields.io/badge/tests-157%2F158%20passing-brightgreen?style=for-the-badge&logo=github-actions&logoColor=white)](https://github.com/petterjuan/agentic-reliability-framework/actions)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=for-the-badge&logo=apache&logoColor=white)](./LICENSE)
+[![HuggingFace](https://img.shields.io/badge/%F0%9F%A4%97-Live%20Demo-yellow?style=for-the-badge&logo=huggingface&logoColor=white)](https://huggingface.co/spaces/petter2025/agentic-reliability-framework)
 
-**[🚀 Try Live Demo](https://huggingface.co/spaces/petter2025/agentic-reliability-framework)** • **[📚 Documentation](https://github.com/petterjuan/agentic-reliability-framework/tree/main/docs)** • **[💼 Get Professional Help](https://lgcylabs.vercel.app/)**
+**[🚀 Live Demo](https://huggingface.co/spaces/petter2025/agentic-reliability-framework)** • **[📚 Documentation](https://github.com/petterjuan/agentic-reliability-framework/tree/main/docs)** • **[💼 Enterprise Edition](https://github.com/petterjuan/agentic-reliability-enterprise)**
 
 </div>
 
