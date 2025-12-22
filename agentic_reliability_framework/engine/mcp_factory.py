@@ -39,34 +39,28 @@ class OSSIntegrationManager:
     def __init__(self):
         """Initialize OSS integration manager"""
         self._oss_client = None
-        self._license_key_detected = self._check_license_key_env()
+        self._upgrade_recommended = self._check_for_upgrade_suggestion()
         
         logger.debug("OSS Integration Manager initialized (advisory only)")
     
-    def _check_license_key_env(self) -> bool:
+    def _check_for_upgrade_suggestion(self) -> bool:
         """
-        OSS EDITION: Never checks license keys
+        OSS EDITION: Check if we should suggest Enterprise upgrade
         
-        Returns:
-            Always False in OSS edition
+        This does NOT check license keys - only looks for environment
+        variables that might indicate interest in Enterprise features.
         """
-        # OSS EDITION: Never checks license keys
-        # This is an Enterprise-only feature
-        
-        # We can check for environment variables to provide upgrade prompts
-        # but we never validate or use them
-        env_vars = [
-            "ARF_LICENSE_KEY",
-            "ARF_ENTERPRISE_LICENSE", 
-            "ARF_COMMERCIAL_LICENSE"
+        # Check for environment variables that might indicate
+        # user is trying to use Enterprise features
+        enterprise_interest_vars = [
+            "ARF_EDITION",           # If set to "enterprise"
+            "ARF_MCP_MODE",          # If set to "approval" or "autonomous"
+            "ARF_EXECUTION_MODE",    # If requesting execution
         ]
         
-        # Only check to provide helpful upgrade messages
-        for env_var in env_vars:
+        for env_var in enterprise_interest_vars:
             if os.getenv(env_var):
-                logger.debug(f"Environment variable {env_var} found")
-                # Return True ONLY to trigger upgrade message
-                # NOT for actual license validation
+                logger.debug(f"Found {env_var} - suggesting Enterprise upgrade")
                 return True
         
         return False
@@ -93,14 +87,15 @@ class OSSIntegrationManager:
         # Log OSS capabilities and limitations
         self._log_oss_capabilities()
         
-        # Show upgrade prompt if license key detected
-        if self._license_key_detected:
+        # Show upgrade suggestion if appropriate
+        if self._upgrade_recommended:
             logger.info(
-                "🔑 License key detected. To use Enterprise features:\n"
+                "🚀 Enterprise features requested\n"
+                "   OSS Edition: Advisory only (no execution)\n"
+                "   To enable execution capabilities:\n"
                 "   1. Install Enterprise package:\n"
                 "      pip install agentic-reliability-enterprise\n"
-                "   2. Use create_enterprise_mcp_server() from Enterprise package\n"
-                "   3. Set ARF_LICENSE_KEY environment variable"
+                "   2. Visit: https://arf.dev/enterprise"
             )
         else:
             logger.info(
@@ -151,7 +146,7 @@ class OSSIntegrationManager:
         status = {
             "edition": "oss",
             "mode": "advisory",
-            "license_key_detected": self._license_key_detected,
+            "enterprise_interest_detected": self._upgrade_recommended,
             "oss_client_active": self._oss_client is not None,
             "execution_allowed": False,
             "upgrade_available": True,
@@ -246,8 +241,7 @@ def get_edition_info() -> Dict[str, Any]:
         "tier": "oss",
         "oss_restricted": True,
         "execution_allowed": False,
-        "license_key_present": False,
-        "license_key_type": "none",
+        "upgrade_available": True,
         "upgrade_url": "https://arf.dev/enterprise",
     }
     
@@ -399,32 +393,30 @@ def check_oss_compatibility(mode: Optional[str] = None) -> Dict[str, Any]:
     return result
 
 
-def is_enterprise_available() -> bool:
+def show_enterprise_upgrade_info() -> None:
     """
-    Check if Enterprise edition might be available
+    OSS EDITION: Show Enterprise upgrade information
     
-    OSS EDITION: Always returns False, but provides helpful message
-    
-    Returns:
-        Always False in OSS edition
+    This function does NOT check license keys or validate anything.
+    It only provides helpful information about Enterprise features.
     """
-    # Check for license key environment variable
-    license_keys = [
-        "ARF_LICENSE_KEY",
-        "ARF_ENTERPRISE_LICENSE",
-        "ARF_COMMERCIAL_LICENSE"
-    ]
+    # Count how many ARF-related environment variables are set
+    arf_env_vars = [key for key in os.environ.keys() if key.startswith("ARF_")]
     
-    has_license_key = any(os.getenv(key) for key in license_keys)
-    
-    if has_license_key:
+    if arf_env_vars:
         logger.info(
-            "📋 License key detected. "
-            "To use Enterprise features, install: "
-            "pip install agentic-reliability-enterprise"
+            "📋 ARF configuration detected\n"
+            "   OSS Edition: Advisory mode only\n"
+            "   Upgrade to Enterprise for:\n"
+            "   • Autonomous execution\n"
+            "   • Approval workflows\n"
+            "   • Learning engine\n"
+            "   • Audit trails\n"
+            "   • Unlimited storage\n"
+            "   Visit: https://arf.dev/enterprise"
         )
-    
-    return False
+    else:
+        logger.debug("OSS Edition running with default configuration")
 
 
 # ========== BACKWARD COMPATIBILITY ==========
@@ -482,7 +474,7 @@ __all__ = [
     "detect_edition",
     "get_edition_info",
     "check_oss_compatibility",
-    "is_enterprise_available",
+    "show_enterprise_upgrade_info",
     
     # Server classes
     "get_mcp_server_class",
