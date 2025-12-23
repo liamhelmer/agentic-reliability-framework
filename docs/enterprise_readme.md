@@ -92,11 +92,6 @@ flowchart LR
 - Integration with CI/CD pipelines for proactive monitoring
 - Enterprise SLA support and 24/7 assistance
 
-## Customer Testimonials
-
-> "ARF Enterprise transformed our incident response, reducing downtime and revenue loss drastically." – CTO, Fortune 500
-
-> "The autonomous self-healing engine is a game-changer. Our engineers can focus on innovation rather than firefighting." – VP Engineering
 
 ## Get Started
 
