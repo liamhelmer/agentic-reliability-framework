@@ -388,7 +388,7 @@ class Config(BaseModel):
                 "https://arf.dev/enterprise\n\n"
                 "Or fix configuration to comply with OSS limits."
             )
-            from arf_core.constants import OSSBoundaryError
+            from .arf_core.constants import OSSBoundaryError
             raise OSSBoundaryError(error_msg)
     
     def get_oss_limits(self) -> Dict[str, Any]:
@@ -522,6 +522,10 @@ class Config(BaseModel):
             config = cls()
         
         return config
+    
+    def print_config(self) -> None:  # FIXED: Added return type annotation
+        """Print configuration as JSON"""
+        print(self.model_dump_json(indent=2))
 
 
 # Custom exception for OSS boundary violations
@@ -543,7 +547,7 @@ except ValueError as e:
 
 
 # Update MemoryConstants with config values
-def update_memory_constants():
+def update_memory_constants() -> None:  # FIXED: Added return type annotation
     """Update memory constants from config (with OSS limits)"""
     try:
         from .memory.constants import MemoryConstants
