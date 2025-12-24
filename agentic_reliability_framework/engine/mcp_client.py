@@ -1,4 +1,3 @@
-# agentic_reliability_framework/engine/mcp_client.py
 """
 OSS MCP Client - Advisory mode only
 Pythonic implementation that maintains same API as MCPServer
@@ -10,7 +9,7 @@ import time
 import uuid
 from typing import Dict, Any, Optional, List
 
-from ..oss.constants import (
+from ..arf_core.constants import (
     MCP_MODES_ALLOWED,
     EXECUTION_ALLOWED,
     validate_oss_config,
@@ -18,7 +17,7 @@ from ..oss.constants import (
     OSSBoundaryError,
     check_oss_compliance,
 )
-from ..oss.healing_intent import HealingIntent
+from ..arf_core.models.healing_intent import HealingIntent
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +40,10 @@ class OSSMCPResponse:
         self.executed = executed
         self.result = result
         self.timestamp = timestamp if timestamp is not None else time.time()
+    
+    def __post_init__(self) -> None:  # FIXED: Added return type annotation
+        if self.timestamp is None:
+            self.timestamp = time.time()
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary format"""
@@ -469,7 +472,7 @@ class OSSMCPClient:
     def create_healing_intent(self, request_dict: Dict[str, Any]) -> HealingIntent:
         """Create HealingIntent directly from request"""
         # Use a synchronous wrapper to avoid nested event loops
-        async def _async_create():
+        async def _async_create() -> Dict[str, Any]:
             return await self._analyze_request(request_dict)
         
         # Run the async function in a new event loop if needed
