@@ -886,6 +886,108 @@ class MCPServer:
             executed=False
         )
 
+    # FIXED: Added return type annotation
+    def _validate_healing_intent(self, intent: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Validate healing intent with safety checks
+        
+        Args:
+            intent: HealingIntent dictionary
+            
+        Returns:
+            Dictionary with validation results
+        """
+        errors: List[str] = []
+        warnings: List[str] = []
+        
+        # Check intent structure
+        if not isinstance(intent, dict):
+            return {"valid": False, "errors": ["Intent must be a dictionary"], "warnings": []}
+        
+        # Check required fields
+        required_fields = ["action", "component", "parameters", "justification"]
+        for field in required_fields:
+            if field not in intent:
+                errors.append(f"Missing required field: {field}")
+        
+        # Check OSS edition restrictions
+        if intent.get("requires_enterprise", False):
+            warnings.append("This intent requires Enterprise edition for execution")
+        
+        # Check confidence range
+        confidence = intent.get("confidence", 0.5)
+        if not (0.0 <= confidence <= 1.0):
+            errors.append(f"Confidence must be between 0.0 and 1.0, got {confidence}")
+        
+        return {
+            "valid": len(errors) == 0,
+            "errors": errors,
+            "warnings": warnings,
+            "confidence": confidence
+        }
+
+    # FIXED: Added return type annotation
+    async def _execute_with_approval(self, request: MCPRequest) -> MCPResponse:
+        """
+        Execute with approval workflow (OSS only - no actual approval)
+        
+        Args:
+            request: MCP request
+            
+        Returns:
+            MCP response with advisory information
+        """
+        # OSS Edition: Approval workflow not available
+        logger.warning(f"Approval workflow requested for {request.tool} on {request.component}")
+        
+        return MCPResponse(
+            request_id=request.request_id,
+            status=MCPRequestStatus.REJECTED,
+            message=f"Approval workflow for {request.tool} requires Enterprise edition",
+            executed=False,
+            result={
+                "requires_enterprise": True,
+                "upgrade_url": "https://arf.dev/enterprise",
+                "advisory_analysis": {
+                    "tool": request.tool,
+                    "component": request.component,
+                    "would_require_approval": True,
+                }
+            }
+        )
+
+    # FIXED: Added return type annotation
+    async def _execute_autonomous(self, request: MCPRequest) -> MCPResponse:
+        """
+        Execute in autonomous mode (OSS only - advisory)
+        
+        Args:
+            request: MCP request
+            
+        Returns:
+            MCP response with advisory information
+        """
+        # OSS Edition: Autonomous execution not available
+        logger.warning(f"Autonomous execution requested for {request.tool} on {request.component}")
+        
+        # Create advisory response
+        return MCPResponse(
+            request_id=request.request_id,
+            status=MCPRequestStatus.REJECTED,
+            message=f"Autonomous execution of {request.tool} requires Enterprise edition",
+            executed=False,
+            result={
+                "requires_enterprise": True,
+                "upgrade_url": "https://arf.dev/enterprise",
+                "advisory_analysis": {
+                    "tool": request.tool,
+                    "component": request.component,
+                    "confidence": 0.85,  # Mock confidence
+                    "similar_incidents_found": 0,  # Mock RAG results
+                }
+            }
+        )
+
     async def _handle_advisory_mode(self, request: MCPRequest) -> MCPResponse:
         """
         Handle advisory mode by delegating to OSSMCPClient
@@ -949,6 +1051,83 @@ class MCPServer:
             }
         )
 
+    # FIXED: Added return type annotation
+    async def _handle_rollback(self, context: ToolContext) -> ToolResult:
+        """
+        Handle rollback execution (OSS only - advisory)
+        
+        Args:
+            context: Tool execution context
+            
+        Returns:
+            ToolResult with advisory information
+        """
+        # OSS Edition: Only advisory, no execution
+        logger.info(f"Advisory: Would rollback {context.component} with parameters {context.parameters}")
+        
+        return ToolResult.success_result(
+            message=f"Advisory: Would rollback {context.component}",
+            details={
+                "action": "rollback",
+                "component": context.component,
+                "parameters": context.parameters,
+                "execution_mode": "advisory",
+                "requires_enterprise": True,
+                "enterprise_features": ["autonomous_execution", "approval_workflows"],
+            }
+        )
+
+    # FIXED: Added return type annotation
+    async def _handle_restart_container(self, context: ToolContext) -> ToolResult:
+        """
+        Handle container restart (OSS only - advisory)
+        
+        Args:
+            context: Tool execution context
+            
+        Returns:
+            ToolResult with advisory information
+        """
+        # OSS Edition: Only advisory, no execution
+        logger.info(f"Advisory: Would restart container {context.component}")
+        
+        return ToolResult.success_result(
+            message=f"Advisory: Would restart container {context.component}",
+            details={
+                "action": "restart_container",
+                "component": context.component,
+                "container_id": context.parameters.get("container_id"),
+                "execution_mode": "advisory",
+                "requires_enterprise": True,
+            }
+        )
+
+    # FIXED: Added return type annotation
+    async def _handle_scale_out(self, context: ToolContext) -> ToolResult:
+        """
+        Handle scale out (OSS only - advisory)
+        
+        Args:
+            context: Tool execution context
+            
+        Returns:
+            ToolResult with advisory information
+        """
+        # OSS Edition: Only advisory, no execution
+        scale_factor = context.parameters.get("scale_factor", 2)
+        logger.info(f"Advisory: Would scale out {context.component} by factor {scale_factor}")
+        
+        return ToolResult.success_result(
+            message=f"Advisory: Would scale out {context.component} by factor {scale_factor}",
+            details={
+                "action": "scale_out",
+                "component": context.component,
+                "scale_factor": scale_factor,
+                "execution_mode": "advisory",
+                "requires_enterprise": True,
+            }
+        )
+
     async def approve_request(
         self,
         approval_id: str,
@@ -960,7 +1139,7 @@ class MCPServer:
         
         OSS EDITION: Always returns advisory response
         """
-        # OSS EDITION: No approval workflow
+        # OSS Edition: No approval workflow
         return MCPResponse(
             request_id=approval_id,
             status=MCPRequestStatus.REJECTED,
@@ -972,6 +1151,7 @@ class MCPServer:
             }
         )
 
+    # FIXED: Added proper return type and fixed the return value
     def get_server_stats(self) -> Dict[str, Any]:
         """Get comprehensive MCP server statistics"""
         engine = get_engine()
@@ -984,7 +1164,8 @@ class MCPServer:
             except Exception:
                 pass
 
-        stats = {
+        # Ensure all values are JSON serializable
+        stats: Dict[str, Any] = {
             "mode": self.mode.value,
             "edition": "oss",
             "oss_restricted": True,
@@ -992,15 +1173,15 @@ class MCPServer:
             "active_cooldowns": len(self._cooldowns),
             "pending_approvals": len(self._approval_requests),
             "execution_history_count": len(self._execution_history),
-            "tool_statistics": dict(self._tool_stats),
-            "uptime_seconds": time.time() - self._start_time,
-            "safety_guardrails": self.safety_guardrails,
+            "tool_statistics": {k: dict(v) for k, v in self._tool_stats.items()},  # Convert defaultdict to dict
+            "uptime_seconds": float(time.time() - self._start_time),
+            "safety_guardrails": dict(self.safety_guardrails) if hasattr(self.safety_guardrails, 'items') else str(self.safety_guardrails),
             "engine_available": engine is not None,
-            "engine_type": getattr(engine, "__class__.__name__", "unknown") if engine else None,
+            "engine_type": str(getattr(engine, "__class__.__name__", "unknown")) if engine else "None",
             "config": {
-                "mcp_mode": config.mcp_mode,
-                "mcp_enabled": config.mcp_enabled,
-                "mpc_cooldown_seconds": config.mpc_cooldown_seconds,
+                "mcp_mode": str(config.mcp_mode),
+                "mcp_enabled": bool(config.mcp_enabled),
+                "mpc_cooldown_seconds": int(config.mpc_cooldown_seconds),
             },
             "oss_limits": {
                 "max_incidents": 1000,
@@ -1010,15 +1191,15 @@ class MCPServer:
             "oss_integration": {
                 "using_oss_client": self.oss_client is not None,
                 "healing_intent_support": self.oss_client is not None,
-                "rag_integration": oss_client_info.get("metrics", {}).get("rag_queries_performed", 0) > 0 if oss_client_info else False,
+                "rag_integration": bool(oss_client_info.get("metrics", {}).get("rag_queries_performed", 0) > 0) if oss_client_info else False,
                 "oss_client_available": OSS_CLIENT_AVAILABLE,
             }
         }
         
         # Add OSS client metrics if available
         if oss_client_info:
-            stats["oss_client_metrics"] = oss_client_info.get("metrics", {})
-            stats["oss_client_cache_size"] = oss_client_info.get("cache_size", 0)
+            stats["oss_client_metrics"] = dict(oss_client_info.get("metrics", {}))
+            stats["oss_client_cache_size"] = int(oss_client_info.get("cache_size", 0))
 
         return stats
 
