@@ -886,7 +886,7 @@ class MCPServer:
             executed=False
         )
 
-    # FIXED: Added return type annotation
+    # FIXED LINE 249: Added explicit return type annotation
     def _validate_healing_intent(self, intent: Dict[str, Any]) -> Dict[str, Any]:
         """
         Validate healing intent with safety checks
@@ -926,7 +926,7 @@ class MCPServer:
             "confidence": confidence
         }
 
-    # FIXED: Added return type annotation
+    # FIXED LINE 408: Added explicit return type annotation
     async def _execute_with_approval(self, request: MCPRequest) -> MCPResponse:
         """
         Execute with approval workflow (OSS only - no actual approval)
@@ -956,7 +956,7 @@ class MCPServer:
             }
         )
 
-    # FIXED: Added return type annotation
+    # FIXED LINE 481: Added explicit return type annotation
     async def _execute_autonomous(self, request: MCPRequest) -> MCPResponse:
         """
         Execute in autonomous mode (OSS only - advisory)
@@ -1051,7 +1051,7 @@ class MCPServer:
             }
         )
 
-    # FIXED: Added return type annotation
+    # FIXED LINE 563: Added explicit return type annotation
     async def _handle_rollback(self, context: ToolContext) -> ToolResult:
         """
         Handle rollback execution (OSS only - advisory)
@@ -1077,7 +1077,7 @@ class MCPServer:
             }
         )
 
-    # FIXED: Added return type annotation
+    # FIXED LINE 591: Added explicit return type annotation
     async def _handle_restart_container(self, context: ToolContext) -> ToolResult:
         """
         Handle container restart (OSS only - advisory)
@@ -1102,7 +1102,7 @@ class MCPServer:
             }
         )
 
-    # FIXED: Added return type annotation
+    # FIXED LINE 619: Added explicit return type annotation
     async def _handle_scale_out(self, context: ToolContext) -> ToolResult:
         """
         Handle scale out (OSS only - advisory)
@@ -1151,7 +1151,7 @@ class MCPServer:
             }
         )
 
-    # FIXED: Added proper return type and fixed the return value
+    # FIXED LINE 1211: Added proper return type and fixed the return value
     def get_server_stats(self) -> Dict[str, Any]:
         """Get comprehensive MCP server statistics"""
         engine = get_engine()
@@ -1164,7 +1164,7 @@ class MCPServer:
             except Exception:
                 pass
 
-        # Ensure all values are JSON serializable
+        # Ensure all values are JSON serializable and properly typed
         stats: Dict[str, Any] = {
             "mode": self.mode.value,
             "edition": "oss",
@@ -1173,9 +1173,8 @@ class MCPServer:
             "active_cooldowns": len(self._cooldowns),
             "pending_approvals": len(self._approval_requests),
             "execution_history_count": len(self._execution_history),
-            "tool_statistics": {k: dict(v) for k, v in self._tool_stats.items()},  # Convert defaultdict to dict
+            "tool_statistics": {k: dict(v) for k, v in self._tool_stats.items()},
             "uptime_seconds": float(time.time() - self._start_time),
-            "safety_guardrails": dict(self.safety_guardrails) if hasattr(self.safety_guardrails, 'items') else str(self.safety_guardrails),
             "engine_available": engine is not None,
             "engine_type": str(getattr(engine, "__class__.__name__", "unknown")) if engine else "None",
             "config": {
@@ -1191,15 +1190,35 @@ class MCPServer:
             "oss_integration": {
                 "using_oss_client": self.oss_client is not None,
                 "healing_intent_support": self.oss_client is not None,
-                "rag_integration": bool(oss_client_info.get("metrics", {}).get("rag_queries_performed", 0) > 0) if oss_client_info else False,
                 "oss_client_available": OSS_CLIENT_AVAILABLE,
             }
         }
         
+        # Add safety guardrails if available and properly formatted
+        if hasattr(self.safety_guardrails, 'items'):
+            stats["safety_guardrails"] = dict(self.safety_guardrails)
+        else:
+            # Handle case where safety_guardrails might be a string or other type
+            stats["safety_guardrails"] = str(self.safety_guardrails)
+        
         # Add OSS client metrics if available
         if oss_client_info:
-            stats["oss_client_metrics"] = dict(oss_client_info.get("metrics", {}))
-            stats["oss_client_cache_size"] = int(oss_client_info.get("cache_size", 0))
+            # Ensure metrics are properly typed
+            metrics = oss_client_info.get("metrics", {})
+            if isinstance(metrics, dict):
+                stats["oss_client_metrics"] = dict(metrics)
+                # Add rag_integration flag if available
+                if metrics.get("rag_queries_performed", 0) > 0:
+                    stats["oss_integration"]["rag_integration"] = True
+            else:
+                stats["oss_client_metrics"] = {}
+            
+            # Add cache size if available
+            cache_size = oss_client_info.get("cache_size", 0)
+            if isinstance(cache_size, (int, float)):
+                stats["oss_client_cache_size"] = int(cache_size)
+            else:
+                stats["oss_client_cache_size"] = 0
 
         return stats
 
