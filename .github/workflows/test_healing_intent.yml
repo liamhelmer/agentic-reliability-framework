@@ -13,7 +13,7 @@ jobs:
   test-healing-intent:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4  # UPDATED: v3 → v4
       
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -31,7 +31,7 @@ jobs:
           
       - name: Upload test artifacts
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4  # UPDATED: v3 → v4
         with:
           name: healing-intent-test-outputs
           path: agentic_reliability_framework/tests/test_outputs/
