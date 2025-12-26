@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=61.0", "wheel"]
+requires = ["setuptools>=61.0", "wheel", "setuptools-scm"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -41,8 +41,28 @@ dev = [
 
 [project.urls]
 Homepage = "https://github.com/petterjuan/agentic-reliability-framework"
-Documentation = "https://arf.dev/docs"
+Documentation = "https://docs.arf.dev"
 Enterprise = "https://arf.dev/enterprise"
+
+# Add classifiers for PyPI
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: System :: Monitoring",
+    "Topic :: System :: Recovery Tools",
+    "Typing :: Typed",
+]
+
+[tool.setuptools]
+packages = ["agentic_reliability_framework"]
 
 [tool.setuptools.packages.find]
 where = ["."]
@@ -89,7 +109,6 @@ warn_unreachable = true
 strict_equality = true
 follow_imports = "normal"
 implicit_reexport = false
-# Add this to the end of your pyproject.toml:
 
 [[tool.mypy.overrides]]
 module = [
