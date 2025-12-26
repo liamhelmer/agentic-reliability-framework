@@ -3,69 +3,181 @@ requires = ["setuptools>=68.0.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "agentic-reliability-framework"  # ✅ CORRECT NAME
+name = "agentic-reliability-framework"
 version = "3.3.0"
-description = "Agentic Reliability Framework OSS Edition - Apache 2.0 Licensed advisory-only AI reliability monitoring"
+description = "Agentic Reliability Framework (OSS Edition) - Apache 2.0 Licensed AI for reliability monitoring with advisory-only mode"
 readme = "README.md"
 requires-python = ">=3.10"
-license = {text = "Apache 2.0"}  # ✅ Use text instead of file
+license = {text = "Apache 2.0"}
 authors = [
     {name = "Juan Petter", email = "petter2025us@outlook.com"}
 ]
 classifiers = [
+    # Development Status
     "Development Status :: 5 - Production/Stable",
+    
+    # Intended Audience
     "Intended Audience :: Developers",
     "Intended Audience :: System Administrators",
+    "Intended Audience :: Information Technology",
+    "Intended Audience :: Telecommunications Industry",
+    
+    # License
     "License :: OSI Approved :: Apache Software License",
+    
+    # Operating System
     "Operating System :: OS Independent",
+    "Operating System :: POSIX",
+    "Operating System :: Unix",
+    "Operating System :: MacOS",
+    "Operating System :: Microsoft :: Windows",
+    
+    # Programming Language
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3 :: Only",
+    
+    # Typing
+    "Typing :: Typed",
+    
+    # Topics
     "Topic :: System :: Monitoring",
     "Topic :: System :: Recovery Tools",
+    "Topic :: System :: Systems Administration",
     "Topic :: Software Development :: Libraries :: Python Modules",
-    "Typing :: Typed",
+    "Topic :: Software Development :: Libraries :: Application Frameworks",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Internet :: Log Analysis",
+    
+    # OSS/Enterprise distinction
+    "Framework :: Agent-Based",
+    "Environment :: Console",
+    "Environment :: Web Environment",
+]
+
+keywords = [
+    "reliability",
+    "monitoring",
+    "ai",
+    "agentic",
+    "self-healing",
+    "observability",
+    "incident-management",
+    "apache2",
+    "oss",
+    "advisory",
+    "mcp",
+    "rag",
+    "faiss",
 ]
 
 dependencies = [
-    "gradio>=5.0.0",
+    # Core dependencies
     "numpy>=1.24.0",
     "pandas>=2.0.0",
     "pydantic>=2.0.0",
-    "sentence-transformers>=2.2.0",
-    "faiss-cpu>=1.7.4",
     "requests>=2.32.5",
     "python-dotenv>=1.0.0",
     "click>=8.0.0",
+    
+    # AI/ML dependencies
+    "sentence-transformers>=2.2.0",
+    "faiss-cpu>=1.7.4",
+    
+    # Async/Networking
+    "httpx>=0.25.0",
+    "aiofiles>=23.0.0",
+    
+    # Reliability patterns
     "circuitbreaker>=1.4.0",
     "atomicwrites>=1.4.0",
-    "httpx>=0.25.0",
+    
+    # Optional: Gradio for UI (can be optional)
+    "gradio>=5.0.0; extra == 'ui'",
 ]
 
 [project.optional-dependencies]
-enterprise = [
-    "agentic-reliability-enterprise>=1.0.0",
+# UI extras (Gradio interface)
+ui = [
+    "gradio>=5.0.0",
+    "gradio-client>=0.15.0",
 ]
+
+# Development extras
 dev = [
     "pytest>=7.4.0",
     "pytest-asyncio>=0.21.0",
     "pytest-cov>=4.1.0",
+    "pytest-xdist>=3.5.0",
     "black>=23.0.0",
     "ruff>=0.1.0",
     "mypy>=1.6.0",
+    "types-requests>=2.31.0",
+    "types-python-dotenv>=1.0.0",
+    "pre-commit>=3.6.0",
+]
+
+# Documentation extras
+docs = [
+    "mkdocs>=1.5.0",
+    "mkdocs-material>=9.5.0",
+    "mkdocstrings[python]>=0.24.0",
+]
+
+# Enterprise upgrade (separate package)
+enterprise = [
+    "agentic-reliability-enterprise>=1.0.0; extra == 'enterprise'",
 ]
 
 [project.urls]
-Homepage = "https://github.com/petterjuan/agentic-reliability-framework"
-"OSS Edition" = "https://github.com/petterjuan/agentic-reliability-framework"
+Homepage = "https://arf.dev"
+Documentation = "https://docs.arf.dev"
+"Source Code" = "https://github.com/petterjuan/agentic-reliability-framework"
+"Bug Tracker" = "https://github.com/petterjuan/agentic-reliability-framework/issues"
+"OSS License" = "https://github.com/petterjuan/agentic-reliability-framework/blob/main/LICENSE"
 "Enterprise Upgrade" = "https://arf.dev/enterprise"
-Documentation = "https://docs.arf.dev/oss"
-Issues = "https://github.com/petterjuan/agentic-reliability-framework/issues"
+"Changelog" = "https://github.com/petterjuan/agentic-reliability-framework/releases"
 
 [project.scripts]
 arf = "agentic_reliability_framework.cli:main"
+arf-cli = "agentic_reliability_framework.cli:main"
 arf-oss = "agentic_reliability_framework.cli:main"
+
+[project.entry-points."agentic_reliability_framework.engines"]
+v3 = "agentic_reliability_framework.engine.v3_reliability:V3ReliabilityEngine"
+enhanced = "agentic_reliability_framework.engine.reliability:EnhancedReliabilityEngine"
+
+[project.entry-points."agentic_reliability_framework.mcp"]
+oss = "agentic_reliability_framework.arf_core.engine.simple_mcp_client:OSSMCPClient"
+
+[tool.setuptools]
+packages = [
+    "agentic_reliability_framework",
+    "agentic_reliability_framework.arf_core",
+    "agentic_reliability_framework.arf_core.config",
+    "agentic_reliability_framework.arf_core.engine",
+    "agentic_reliability_framework.arf_core.models",
+    "agentic_reliability_framework.engine",
+    "agentic_reliability_framework.memory",
+    "agentic_reliability_framework.data",
+]
+
+[tool.setuptools.package-data]
+"agentic_reliability_framework" = [
+    "data/*.json", 
+    "data/*.index",
+    "*.py",
+    "__version__.py",
+]
+"agentic_reliability_framework.arf_core" = [
+    "*.py",
+    "models/*.py",
+    "engine/*.py",
+    "config/*.py",
+    "constants.py",
+]
 
 [tool.setuptools.packages.find]
 where = ["."]
@@ -73,25 +185,116 @@ include = [
     "agentic_reliability_framework*",
     "arf_core*",
 ]
-
-[tool.setuptools.package-data]
-"agentic_reliability_framework" = [
-    "data/*.json", 
-    "data/*.index",
-]
-"arf_core" = [
-    "models/*.py",
-    "engine/*.py",
-    "config/*.py",
-    "*.py",
+exclude = [
+    "tests*",
+    "Test*",
+    "test*",
+    "examples*",
+    "docs*",
+    "scripts*",
+    "archive*",
+    "backup_builds*",
+    ".*",
+    "*.egg-info*",
 ]
 
 [tool.black]
 line-length = 100
 target-version = ['py310']
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+    \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | _build
+  | buck-out
+  | build
+  | dist
+)/
+'''
 
 [tool.ruff]
 line-length = 100
 target-version = "py310"
-select = ["E", "W", "F", "I"]
-ignore = ["E501", "W503", "F401"]
+select = ["E", "W", "F", "I", "B", "C", "N", "A", "RUF"]
+ignore = ["E501", "W503", "F401", "B008", "C901"]
+exclude = [
+    ".eggs",
+    ".git",
+    ".hg",
+    ".mypy_cache",
+    ".tox",
+    ".venv",
+    "_build",
+    "buck-out",
+    "build",
+    "dist",
+    "venv",
+    "tests",
+    "Test",
+    "examples",
+]
+
+[tool.ruff.per-file-ignores]
+"__init__.py" = ["F401"]
+"test_*.py" = ["B", "C", "N", "A", "RUF"]
+"*_test.py" = ["B", "C", "N", "A", "RUF"]
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+strict_equality = true
+
+[[tool.mypy.overrides]]
+module = [
+    "agentic_reliability_framework.engine.*",
+    "agentic_reliability_framework.app",
+    "agentic_reliability_framework.cli",
+]
+disallow_untyped_defs = false
+
+[[tool.mypy.overrides]]
+module = [
+    "agentic_reliability_framework.arf_core.*",
+]
+disallow_untyped_defs = true
+
+[tool.pytest.ini_options]
+testpaths = ["Test", "tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "--strict-markers",
+    "--strict-config",
+    "--tb=short",
+    "-v",
+]
+markers = [
+    "oss: OSS edition tests",
+    "enterprise: Enterprise edition tests (require license)",
+    "slow: slow running tests",
+    "integration: integration tests",
+]
+asyncio_mode = "auto"
+
+# OSS Edition specific metadata
+[tool.arf]
+edition = "oss"
+version = "3.3.0"
+license = "Apache-2.0"
+capabilities = ["advisory", "analysis", "rag", "healing_intent"]
+limits = {max_incidents = 1000, storage = "in_memory", execution = "none"}
+enterprise_upgrade_url = "https://arf.dev/enterprise"
