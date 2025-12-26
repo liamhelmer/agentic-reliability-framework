@@ -1,0 +1,67 @@
+# .github/workflows/diagnose_structure.yml
+name: Diagnose Module Structure
+
+on:
+  workflow_dispatch:  # Manual trigger
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+          
+      - name: List all Python files
+        run: |
+          echo "📂 Project Structure:"
+          find . -name "*.py" -type f | grep -E "(arf_core|engine|mcp)" | head -20
+          
+      - name: Check arf_core module structure
+        run: |
+          echo "🔍 Checking arf_core/__init__.py exports:"
+          if [ -f "agentic_reliability_framework/arf_core/__init__.py" ]; then
+            cat agentic_reliability_framework/arf_core/__init__.py
+          else
+            echo "❌ arf_core/__init__.py not found"
+            echo "📁 Contents of agentic_reliability_framework/:"
+            ls -la agentic_reliability_framework/
+          fi
+          
+      - name: Find OSSMCPClient definition
+        run: |
+          echo "🔍 Searching for OSSMCPClient definition:"
+          find . -name "*.py" -type f -exec grep -l "class OSSMCPClient" {} \; || echo "No OSSMCPClient class found"
+          
+      - name: Test imports
+        run: |
+          echo "🧪 Testing imports:"
+          python -c "
+          import sys
+          print(f'Python path: {sys.path[:3]}')
+          
+          # Try different import patterns
+          try:
+              import agentic_reliability_framework
+              print(f'✅ Main package: {agentic_reliability_framework.__version__}')
+          except Exception as e:
+              print(f'❌ Main import failed: {e}')
+          
+          # List available attributes in arf_core
+          try:
+              from agentic_reliability_framework import arf_core
+              print(f'✅ arf_core module: {dir(arf_core)[:10]}')
+          except Exception as e:
+              print(f'❌ arf_core import failed: {e}')
+              
+          # Try to import directly from engine
+          try:
+              from agentic_reliability_framework.engine.mcp_client import OSSMCPClient
+              print('✅ OSSMCPClient found in engine.mcp_client')
+          except Exception as e:
+              print(f'❌ Direct engine import: {e}')
+          "
