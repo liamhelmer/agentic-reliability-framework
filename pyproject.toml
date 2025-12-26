@@ -12,17 +12,6 @@ authors = [
     {name = "Juan Petter", email = "ai@petterjuan.com"}
 ]
 requires-python = ">=3.10"
-dependencies = [
-    "gradio>=4.19.0",
-    "pydantic>=2.0.0", 
-    "numpy>=1.24.0",
-    "faiss-cpu>=1.7.0",
-    "requests>=2.31.0",
-    "circuitbreaker>=1.4.0",
-    "atomicwrites>=1.4.0",
-    "pandas>=2.0.0",
-    "httpx>=0.25.0",
-]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Developers",
@@ -37,6 +26,17 @@ classifiers = [
     "Topic :: System :: Monitoring",
     "Topic :: System :: Recovery Tools",
     "Typing :: Typed",
+]
+dependencies = [
+    "gradio>=4.19.0",
+    "pydantic>=2.0.0", 
+    "numpy>=1.24.0",
+    "faiss-cpu>=1.7.0",
+    "requests>=2.31.0",
+    "circuitbreaker>=1.4.0",
+    "atomicwrites>=1.4.0",
+    "pandas>=2.0.0",
+    "httpx>=0.25.0",
 ]
 
 [project.optional-dependencies]
@@ -55,61 +55,3 @@ dev = [
 Homepage = "https://github.com/petterjuan/agentic-reliability-framework"
 Documentation = "https://docs.arf.dev"
 Enterprise = "https://arf.dev/enterprise"
-
-[tool.setuptools]
-packages = ["agentic_reliability_framework"]
-
-[tool.setuptools.package-data]
-"agentic_reliability_framework" = ["py.typed"]
-"agentic_reliability_framework.data" = ["*.json", "*.index"]
-
-[tool.black]
-line-length = 88
-target-version = ['py310']
-
-[tool.ruff]
-target-version = "py310"
-line-length = 88
-select = [
-    "E",  # pycodestyle errors
-    "W",  # pycodestyle warnings
-    "F",  # pyflakes
-    "I",  # isort
-    "B",  # flake8-bugbear
-    "C4", # flake8-comprehensions
-    "UP", # pyupgrade
-]
-ignore = [
-    "E501",  # line too long, handled by black
-    "B008",  # do not perform function calls in argument defaults
-]
-
-[tool.mypy]
-python_version = "3.10"
-warn_return_any = true
-warn_unused_configs = true
-disallow_untyped_defs = false
-disallow_incomplete_defs = true
-check_untyped_defs = true
-disallow_untyped_decorators = false
-warn_redundant_casts = true
-warn_unused_ignores = true
-warn_no_return = true
-warn_unreachable = true
-strict_equality = true
-follow_imports = "normal"
-implicit_reexport = false
-
-[[tool.mypy.overrides]]
-module = [
-    "agentic_reliability_framework.arf_core.*",
-    "agentic_reliability_framework.engine.*", 
-    "agentic_reliability_framework.memory.*",
-]
-disallow_untyped_defs = false
-
-[[tool.mypy.overrides]]
-module = [
-    "tests.*",
-]
-ignore_errors = true
