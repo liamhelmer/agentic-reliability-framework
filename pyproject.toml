@@ -63,6 +63,7 @@ classifiers = [
 
 [tool.setuptools]
 packages = ["agentic_reliability_framework"]
+
 [tool.setuptools.package-data]
 "agentic_reliability_framework" = ["py.typed"]
 "agentic_reliability_framework.data" = ["*.json", "*.index"]
