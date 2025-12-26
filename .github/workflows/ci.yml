@@ -1,281 +1,123 @@
 # .github/workflows/ci.yml
-name: CI
+name: OSS Comprehensive Tests
 
 on:
   push:
-    branches: [main, develop]
+    branches: [ main ]
     paths:
       - 'agentic_reliability_framework/**'
-      - 'Test/**'
+      - 'tests/**'
+      - 'scripts/**'
       - '.github/workflows/ci.yml'
-      - 'pyproject.toml'
-      - 'setup.py'
   pull_request:
-    branches: [main]
-
-env:
-  # OSS-COMPLIANT ENVIRONMENT - DO NOT SET LEARNING_ENABLED
-  MCP_MODE: "advisory"
-  MAX_INCIDENT_HISTORY: "1000"
-  GRAPH_STORAGE: "in_memory"
-  PYTHONPATH: "${{ github.workspace }}"
+    branches: [ main ]
 
 jobs:
-  test:
-    name: Test (${{ matrix.python-version }})
+  test-comprehensive:
+    name: Comprehensive OSS Tests
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ["3.10", "3.11", "3.12"]
     
     steps:
-      - uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v4
       
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v4
-        with:
-          python-version: ${{ matrix.python-version }}
-          
-      - name: Install package and dependencies
-        run: |
-          pip install -e .
-          pip install pytest pytest-asyncio pytest-cov httpx numpy
-          
-      - name: Create test directory if missing
-        run: |
-          # Create tests directory if it doesn't exist
-          mkdir -p tests
-          
-      - name: Run SIMPLE OSS import test
-        env:
-          MCP_MODE: "advisory"
-          MAX_INCIDENT_HISTORY: "1000"
-          GRAPH_STORAGE: "in_memory"
-        run: |
-          echo "🧪 Testing OSS imports WITHOUT triggering config validation..."
-          
-          # Clean environment first
-          unset LEARNING_ENABLED 2>/dev/null || true
-          
-          # SIMPLIFIED: Use inline python -c instead of heredoc
-          python -c "
-import os
-import sys
-
-# Clean environment
-os.environ['MCP_MODE'] = 'advisory'
-os.environ['MAX_INCIDENT_HISTORY'] = '1000'
-os.environ['GRAPH_STORAGE'] = 'in_memory'
-if 'LEARNING_ENABLED' in os.environ:
-    del os.environ['LEARNING_ENABLED']
-
-print('Testing OSS imports...')
-
-# Test 1: Import HealingIntent
-try:
-    from agentic_reliability_framework.arf_core.models.healing_intent import HealingIntent
-    print('✅ HealingIntent imported')
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pytest pytest-asyncio pytest-cov pytest-mock
+        pip install faiss-cpu numpy pandas
+        pip install -e .
+        
+    - name: Run all OSS tests
+      run: |
+        python -m pytest tests/ -v --tb=short --cov=agentic_reliability_framework --cov-report=xml
+        
+    - name: Upload coverage
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+        flags: unittests
+        
+  type-check:
+    name: Type Checking
+    runs-on: ubuntu-latest
+    needs: test-comprehensive
     
-    intent = HealingIntent(
-        action='test',
-        component='test',
-        parameters={},
-        justification='test',
-        confidence=0.5,
-        incident_id='test'
-    )
-    print(f'✅ HealingIntent created: {intent.intent_id}')
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+        
+    - name: Install dependencies
+      run: |
+        pip install mypy types-dataclasses
+        
+    - name: Run mypy
+      run: |
+        mypy agentic_reliability_framework/ --config-file .mypy.ini
+        
+  lint:
+    name: Linting
+    runs-on: ubuntu-latest
+    needs: test-comprehensive
     
-except Exception as e:
-    print(f'❌ HealingIntent failed: {e}')
-    sys.exit(1)
-
-# Test 2: Try to import OSSMCPClient
-try:
-    from agentic_reliability_framework.arf_core.engine.simple_mcp_client import OSSMCPClient
-    print('✅ OSSMCPClient imported')
-except ImportError:
-    try:
-        from agentic_reliability_framework.engine.oss_mcp_client import OSSMCPClient
-        print('✅ OSSMCPClient imported (fallback)')
-    except Exception as e:
-        print(f'❌ OSSMCPClient import failed: {e}')
-        sys.exit(1)
-
-print('✅ All imports successful!')
-"
-          
-      - name: Create test file in Test directory
-        run: |
-          echo "📝 Creating OSS test file in Test/ directory..."
-          
-          # SIMPLIFIED: Create a basic test file
-          cat > Test/test_simple_imports.py << 'EOF'
-"""
-Simple import tests
-"""
-import os
-
-os.environ.update({
-    'MCP_MODE': 'advisory',
-    'MAX_INCIDENT_HISTORY': '1000',
-    'GRAPH_STORAGE': 'in_memory',
-})
-
-def test_healing_intent():
-    """Test HealingIntent import"""
-    from agentic_reliability_framework.arf_core.models.healing_intent import HealingIntent
-    from datetime import datetime
-    
-    intent = HealingIntent(
-        action='test',
-        component='test',
-        parameters={},
-        justification='test',
-        confidence=0.5,
-        incident_id='test',
-        detected_at=datetime.now().timestamp()
-    )
-    
-    assert intent.action == 'test'
-    print(f'✅ HealingIntent: {intent.intent_id}')
-
-if __name__ == '__main__':
-    test_healing_intent()
-    print('✅ Test passed!')
-EOF
-          
-      - name: Run existing OSS tests
-        env:
-          MCP_MODE: "advisory"
-          MAX_INCIDENT_HISTORY: "1000"
-          GRAPH_STORAGE: "in_memory"
-        run: |
-          echo "🧪 Running existing OSS tests from Test/ directory..."
-          
-          # List test files
-          echo "📁 Test files:"
-          find Test/ -name "*.py" -type f | head -10 || echo "No test files found"
-          
-          # Run any OSS tests
-          python -m pytest Test/ -v --tb=short -k "oss" 2>&1 | head -50 || echo "⚠️  OSS tests may have failed"
-          
-      - name: Run other tests (excluding enterprise)
-        env:
-          MCP_MODE: "advisory"
-          MAX_INCIDENT_HISTORY: "1000"
-          GRAPH_STORAGE: "in_memory"
-        run: |
-          echo "🧪 Running other tests from Test/ directory..."
-          python -m pytest Test/ -v --tb=short -k "not enterprise" 2>&1 | tail -50 || echo "⚠️  Some tests may have failed"
-          
-      - name: Run minimal coverage with fallback
-        run: |
-          echo "📊 Running minimal coverage..."
-          
-          # Try to run coverage
-          python -m pytest Test/ -k "not enterprise" --cov=agentic_reliability_framework --cov-report=xml 2>&1 | tail -30 || echo "⚠️  Coverage may be incomplete"
-          
-          # Ensure coverage.xml exists
-          if [ ! -f "coverage.xml" ]; then
-            echo "<coverage></coverage>" > coverage.xml
-          fi
-          
-      - name: Upload coverage reports
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-${{ matrix.python-version }}
-          path: |
-            coverage.xml
-  
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+        
+    - name: Install dependencies
+      run: |
+        pip install ruff black
+        
+    - name: Check formatting with black
+      run: |
+        black --check agentic_reliability_framework/ tests/
+        
+    - name: Run ruff linting
+      run: |
+        ruff check agentic_reliability_framework/ tests/
+        
   build:
     name: Build Package
     runs-on: ubuntu-latest
-    needs: [test]
+    needs: [test-comprehensive, type-check, lint]
+    if: ${{ success() && github.ref == 'refs/heads/main' }}
     
     steps:
-      - uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v4
       
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: "3.11"
-          
-      - name: Install build tools
-        run: |
-          pip install build
-          
-      - name: Build package
-        run: |
-          python -m build
-          
-      - name: Test installed package
-        run: |
-          echo "📦 Testing installed package..."
-          
-          # Clean environment
-          export MCP_MODE="advisory"
-          export MAX_INCIDENT_HISTORY="1000"
-          export GRAPH_STORAGE="in_memory"
-          unset LEARNING_ENABLED 2>/dev/null || true
-          
-          # Install from built wheel
-          pip install dist/*.whl --force-reinstall
-          
-          # Test with clean environment
-          python -c "
-import os
-os.environ['MCP_MODE'] = 'advisory'
-os.environ['MAX_INCIDENT_HISTORY'] = '1000'
-os.environ['GRAPH_STORAGE'] = 'in_memory'
-
-import agentic_reliability_framework
-print(f'✅ Main package: {agentic_reliability_framework.__version__}')
-
-try:
-    from agentic_reliability_framework.arf_core.models.healing_intent import HealingIntent
-    print('✅ HealingIntent imported')
-except Exception as e:
-    print(f'⚠️  HealingIntent: {e}')
-
-print('📦 Package installation test completed')
-"
-          
-      - name: Upload built packages
-        uses: actions/upload-artifact@v4
-        with:
-          name: dist
-          path: dist/
-  
-  summary:
-    name: Summary
-    runs-on: ubuntu-latest
-    needs: [test, build]
-    if: always()
-    
-    steps:
-      - name: Print success message
-        if: success()
-        run: |
-          echo "=========================================="
-          echo "🎉 CI PASSED!"
-          echo "=========================================="
-          echo ""
-          echo "✅ OSS imports work"
-          echo "✅ Tests passed"
-          echo "✅ Package builds successfully"
-          
-      - name: Print failure help
-        if: failure()
-        run: |
-          echo "=========================================="
-          echo "❌ CI FAILED"
-          echo "=========================================="
-          echo ""
-          echo "Common issues:"
-          echo "1. YAML syntax error in workflow file"
-          echo "2. Missing import in Python code"
-          echo "3. Test directory structure issues"
-          echo ""
-          echo "Check: python -c \"from agentic_reliability_framework.arf_core.models.healing_intent import HealingIntent; print('✅ HealingIntent works')\""
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+        
+    - name: Build wheel
+      run: |
+        pip install build
+        python -m build --wheel
+        
+    - name: Test installation
+      run: |
+        pip install dist/*.whl --force-reinstall
+        python -c "import agentic_reliability_framework; print(f'✅ Import successful: {agentic_reliability_framework.__version__}')"
+        
+    - name: Upload artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: agentic-reliability-framework-wheel
+        path: dist/*.whl
