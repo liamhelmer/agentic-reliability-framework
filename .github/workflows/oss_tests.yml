@@ -1,4 +1,4 @@
-# .github/workflows/oss_tests.yml - UPDATED
+# .github/workflows/oss_tests.yml - FIXED
 name: OSS Boundary Tests
 
 on:
@@ -63,13 +63,12 @@ jobs:
           fi
         else
           echo "   ⚠️  constants.py missing - creating minimal version"
-          cat > agentic_reliability_framework/arf_core/constants.py << 'EOF'
-# Minimal OSS constants for testing
-MAX_INCIDENT_HISTORY = 1000
-MCP_MODES_ALLOWED = ("advisory",)
-EXECUTION_ALLOWED = False
-GRAPH_STORAGE = "in_memory"
-EOF
+          # Write constants.py directly (no heredoc)
+          echo '# Minimal OSS constants for testing' > agentic_reliability_framework/arf_core/constants.py
+          echo 'MAX_INCIDENT_HISTORY = 1000' >> agentic_reliability_framework/arf_core/constants.py
+          echo 'MCP_MODES_ALLOWED = ("advisory",)' >> agentic_reliability_framework/arf_core/constants.py
+          echo 'EXECUTION_ALLOWED = False' >> agentic_reliability_framework/arf_core/constants.py
+          echo 'GRAPH_STORAGE = "in_memory"' >> agentic_reliability_framework/arf_core/constants.py
         fi
         
         # 3. Check for ABSOLUTE NO Enterprise code
