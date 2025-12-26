@@ -494,18 +494,30 @@ def create_alert_tool() -> MCPTool:
 
 
 # ========== OSS INTEGRATION IMPORT ==========
-# Import OSSMCPClient for advisory mode delegation
+# FIXED IMPORT PATHS - Use correct relative imports
 try:
-    from arf_core.engine.oss_mcp_client import OSSMCPClient, create_oss_mcp_client
+    # FIXED: Use correct import path for OSSMCPClient
+    from ..arf_core.engine.oss_mcp_client import OSSMCPClient, create_oss_mcp_client
     OSS_CLIENT_AVAILABLE = True
+    logger.info("✅ Successfully imported OSSMCPClient from arf_core.engine.oss_mcp_client")
 except ImportError as e:
-    logger.warning(f"OSSMCPClient not available: {e}. Using fallback advisory mode.")
-    OSS_CLIENT_AVAILABLE = False
+    logger.warning(f"OSSMCPClient not available: {e}. Trying simple_mcp_client...")
+    try:
+        # Fallback to simple client
+        from ..arf_core.engine.simple_mcp_client import OSSMCPClient, create_mcp_client
+        create_oss_mcp_client = create_mcp_client
+        OSS_CLIENT_AVAILABLE = True
+        logger.info("✅ Using simple_mcp_client as fallback")
+    except ImportError as e2:
+        logger.warning(f"Simple MCP client also not available: {e2}. Using fallback advisory mode.")
+        OSS_CLIENT_AVAILABLE = False
 
 # Import HealingIntent for OSS analysis
 try:
-    from arf_core.models.healing_intent import HealingIntent
+    # FIXED: Use correct import path for HealingIntent
+    from ..arf_core.models.healing_intent import HealingIntent
     HEALING_INTENT_AVAILABLE = True
+    logger.info("✅ Successfully imported HealingIntent from arf_core.models.healing_intent")
 except ImportError as e:
     logger.warning(f"HealingIntent not available: {e}. Using basic advisory mode.")
     HEALING_INTENT_AVAILABLE = False
@@ -748,7 +760,12 @@ class MCPServer:
         that can be executed by Enterprise edition
         """
         if not HEALING_INTENT_AVAILABLE:
-            raise ImportError("HealingIntent model not available")
+            # Try to import directly
+            try:
+                from ..arf_core.models.healing_intent import HealingIntent
+                HEALING_INTENT_AVAILABLE = True
+            except ImportError:
+                raise ImportError("HealingIntent model not available")
         
         # Use OSS client for analysis if available
         if self.oss_client and hasattr(self.oss_client, 'analyze_and_recommend'):
@@ -769,14 +786,15 @@ class MCPServer:
                         raise ValueError(f"Validation failed: {', '.join(validation.errors)}")
                 
                 # Use OSS client for analysis
-                healing_intent = await self.oss_client.analyze_and_recommend(
+                from ..arf_core.engine.oss_mcp_client import OSSAnalysisResult
+                analysis_result = await self.oss_client.analyze_and_recommend(
                     tool_name=request.tool,
                     component=request.component,
                     parameters=request.parameters,
                     context=request.metadata
                 )
                 
-                return healing_intent
+                return analysis_result.healing_intent
                 
             except Exception as e:
                 logger.warning(f"OSSMCPClient analysis failed: {e}")
