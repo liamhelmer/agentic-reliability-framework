@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "agentic-reliability-framework"
 version = "3.3.0"
-description = "Agentic Reliability Framework - OSS Edition: Production-grade multi-agent AI for reliability monitoring"
+description = "Agentic Reliability Framework - OSS Edition: AI-powered infrastructure reliability monitoring"
 readme = "README.md"
 license = {text = "Apache-2.0"}
 authors = [
@@ -13,22 +13,36 @@ authors = [
 ]
 requires-python = ">=3.10"
 dependencies = [
+    # From setup.py
+    "gradio>=4.19.0",
+    "pydantic>=2.0.0", 
     "numpy>=1.24.0",
-    "pandas>=2.0.0",
-    "pydantic>=2.0.0",
-    "httpx>=0.25.0",
     "faiss-cpu>=1.7.0",
+    "requests>=2.31.0",
+    "circuitbreaker>=1.4.0",
+    "atomicwrites>=1.4.0",
+    
+    # Additional from your imports
+    "pandas>=2.0.0",
+    "httpx>=0.25.0",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0.0",
     "pytest-asyncio>=0.21.0",
-    "pytest-cov>=4.1.0",
+    "pytest-cov>=4.0.0",
     "mypy>=1.0.0",
     "ruff>=0.1.0",
     "black>=23.0.0",
+    "types-requests",
+    "types-PyYAML",
 ]
+
+[project.urls]
+Homepage = "https://github.com/petterjuan/agentic-reliability-framework"
+Documentation = "https://arf.dev/docs"
+Enterprise = "https://arf.dev/enterprise"
 
 [tool.setuptools.packages.find]
 where = ["."]
@@ -38,3 +52,40 @@ exclude = ["tests*", "examples*", "scripts*", "archive*", "backup_builds*"]
 [tool.setuptools.package-data]
 "agentic_reliability_framework" = ["py.typed"]
 "agentic_reliability_framework.data" = ["*.json", "*.index"]
+
+[tool.black]
+line-length = 88
+target-version = ['py310']
+
+[tool.ruff]
+target-version = "py310"
+line-length = 88
+select = [
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings
+    "F",  # pyflakes
+    "I",  # isort
+    "B",  # flake8-bugbear
+    "C4", # flake8-comprehensions
+    "UP", # pyupgrade
+]
+ignore = [
+    "E501",  # line too long, handled by black
+    "B008",  # do not perform function calls in argument defaults
+]
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = false
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+strict_equality = true
+follow_imports = "normal"
+implicit_reexport = false
