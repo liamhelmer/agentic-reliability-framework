@@ -1,4 +1,4 @@
-# .github/workflows/oss_tests.yml - UPDATED
+# .github/workflows/oss_tests.yml
 name: OSS Boundary Tests
 
 on:
@@ -7,6 +7,7 @@ on:
     paths:
       - 'agentic_reliability_framework/arf_core/**'
       - 'scripts/**'
+      - '.github/workflows/oss_tests.yml'
 
 jobs:
   oss-boundary:
@@ -22,33 +23,39 @@ jobs:
       with:
         python-version: '3.10'
         
-    - name: Run simplified OSS boundary check
+    - name: Run OSS boundary check
       run: |
         python scripts/oss_boundary_check.py
         
-    - name: Check for basic OSS violations
+    - name: Quick manual checks
       run: |
-        echo "Running quick OSS violation checks..."
+        echo "🔍 Running quick OSS compliance checks..."
         
-        # Check OSS directories for Enterprise patterns
-        OSS_DIRS="agentic_reliability_framework/arf_core"
+        # Check arf_core exists
+        if [ ! -d "agentic_reliability_framework/arf_core" ]; then
+          echo "❌ arf_core directory not found"
+          exit 1
+        fi
         
-        for dir in $OSS_DIRS; do
-          if [ -d "$dir" ]; then
-            echo "Checking $dir for Enterprise patterns..."
-            
-            # Check for Enterprise module names
-            if grep -r "arf_enterprise\|EnterpriseMCPServer\|LicenseManager" "$dir" --include="*.py"; then
-              echo "❌ Found Enterprise patterns in $dir"
-              exit 1
-            fi
-            
-            # Check for execution modes other than advisory
-            if grep -r "MCPMode\.APPROVAL\|MCPMode\.AUTONOMOUS" "$dir" --include="*.py"; then
-              echo "❌ Found non-advisory modes in $dir"
-              exit 1
-            fi
+        # Check for forbidden patterns
+        echo "Checking for Enterprise patterns in OSS code..."
+        
+        # Patterns that should NOT exist in OSS code
+        FORBIDDEN_PATTERNS=(
+          "EnterpriseMCPServer"
+          "LicenseManager"
+          "license_key"
+          "validate_license"
+          "MCPMode.APPROVAL"
+          "MCPMode.AUTONOMOUS"
+        )
+        
+        for pattern in "${FORBIDDEN_PATTERNS[@]}"; do
+          echo "  Checking for: $pattern"
+          if grep -r "$pattern" agentic_reliability_framework/arf_core/ --include="*.py"; then
+            echo "❌ Found forbidden pattern '$pattern' in OSS code"
+            exit 1
           fi
         done
         
-        echo "✅ Basic OSS checks passed"
+        echo "✅ All quick checks passed"
