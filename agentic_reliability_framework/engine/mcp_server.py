@@ -996,16 +996,18 @@ class MCPServer:
                 info["requires_enterprise"] = True
                 return info
             return {}
-
-        return {
-            name: {
-                **tool.get_tool_info(),
+        
+        # For all tools - FIXED: Explicitly type the result
+        result: Dict[str, Any] = {}
+        for name, tool in self.registered_tools.items():
+            tool_info = tool.get_tool_info()
+            result[name] = {
+                **tool_info,
                 "oss_edition": True,
                 "can_execute": False,
                 "requires_enterprise": True,
             }
-            for name, tool in self.registered_tools.items()
-        }
+        return result
 
     def get_recent_executions(self, limit: int = 10) -> List[Dict[str, Any]]:
         """Get recent execution history (advisory only)"""
