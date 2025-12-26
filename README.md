@@ -12,7 +12,9 @@
 
 [![PyPI version](https://img.shields.io/pypi/v/agentic-reliability-framework?style=for-the-badge&logo=pypi&logoColor=white)](https://pypi.org/project/agentic-reliability-framework/)
 [![Python Versions](https://img.shields.io/pypi/pyversions/agentic-reliability-framework?style=for-the-badge&logo=python&logoColor=white)](https://pypi.org/project/agentic-reliability-framework/)
-[![Tests](https://img.shields.io/badge/tests-157%2F158%20passing-brightgreen?style=for-the-badge&logo=github-actions&logoColor=white)](https://github.com/petterjuan/agentic-reliability-framework/actions)
+![OSS Tests](https://github.com/petterjuan/agentic-reliability-framework/actions/workflows/tests.yml/badge.svg)
+![Comprehensive Tests](https://github.com/petterjuan/agentic-reliability-framework/actions/workflows/ci.yml/badge.svg)
+![OSS Boundary Tests](https://github.com/petterjuan/agentic-reliability-framework/actions/workflows/oss_tests.yml/badge.svg)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=for-the-badge&logo=apache&logoColor=white)](./LICENSE)
 [![HuggingFace](https://img.shields.io/badge/%F0%9F%A4%97-Live%20Demo-yellow?style=for-the-badge&logo=huggingface&logoColor=white)](https://huggingface.co/spaces/petter2025/agentic-reliability-framework)
 
