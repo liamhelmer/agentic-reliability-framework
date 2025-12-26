@@ -238,7 +238,10 @@ jobs:
       - name: Build OSS package
         run: |
           echo "📦 Building OSS package..."
+          # First ensure the dist directory exists and is clean
+          rm -rf dist/ build/
           python -m build --wheel
+          echo "✅ Built package contents:"
           ls -la dist/
           
       - name: Verify OSS package installation
@@ -291,6 +294,7 @@ jobs:
     name: End-to-End OSS Flow
     runs-on: ubuntu-latest
     
+    # FIXED: This job needs the built package, so wait for build-oss-package
     needs: [build-oss-package]
     
     steps:
@@ -301,8 +305,16 @@ jobs:
         with:
           python-version: "3.11"
           
+      - name: Download built package
+        uses: actions/download-artifact@v4
+        with:
+          name: oss-package-3.11
+          path: dist/
+          
       - name: Install from built package
         run: |
+          echo "📦 Installing from built package..."
+          ls -la dist/
           pip install dist/*.whl
           
       - name: Run end-to-end OSS flow test
@@ -354,7 +366,6 @@ jobs:
         with:
           name: e2e-test-results
           path: |
-            coverage.xml
             mypy.ini
 
   deploy-docs:
@@ -443,7 +454,6 @@ jobs:
             docs/
             OSS_FEATURES.md
 
-# This is the final success step - only runs if all previous jobs succeed
   success:
     name: 🎉 OSS Release Ready
     runs-on: ubuntu-latest
