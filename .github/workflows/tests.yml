@@ -1,156 +1,88 @@
-# scripts/fix_mypy_errors.py
-#!/usr/bin/env python3
-"""
-Quick fixes for mypy errors in the OSS package
-"""
+# .github/workflows/tests.yml
+name: OSS Tests
 
-import os
-import re
-from pathlib import Path
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'agentic_reliability_framework/**'
+      - 'tests/**'
+      - '.github/workflows/tests.yml'
+      - 'pyproject.toml'
+  pull_request:
+    branches: [ main, develop ]
 
-def fix_healing_intent_unreachable():
-    """Fix unreachable statement in healing_intent.py line 182"""
-    path = Path("agentic_reliability_framework/arf_core/models/healing_intent.py")
-    if not path.exists():
-        print(f"❌ File not found: {path}")
-        return False
+jobs:
+  test:
+    name: Run OSS Tests
+    runs-on: ubuntu-latest
     
-    with open(path, 'r') as f:
-        content = f.read()
-    
-    lines = content.split('\n')
-    
-    # Check around line 182 (adjusting for 0-based index)
-    if len(lines) > 181:
-        line_182 = lines[181]
-        print(f"Line 182: {line_182}")
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
         
-        # If it's an unreachable else clause, we might want to comment it out or remove it
-        # But first, let's see what's around it
-        context_start = max(0, 175)
-        context_end = min(len(lines), 190)
-        print(f"\nContext (lines {context_start+1}-{context_end+1}):")
-        for i in range(context_start, context_end):
-            print(f"{i+1:4}: {lines[i]}")
-    
-    return True
-
-def add_return_type_annotations():
-    """Add missing return type annotations"""
-    
-    # Files and lines that need fixes
-    fixes = [
-        {
-            "file": "agentic_reliability_framework/arf_core/config/oss_config.py",
-            "line": 62,
-            "pattern": r"def __post_init__\(self\):",
-            "replacement": "def __post_init__(self) -> None:"
-        },
-        {
-            "file": "agentic_reliability_framework/engine/mcp_factory.py", 
-            "line": 39,
-            "pattern": r"def __init__\(.*\):",
-            "replacement": "def __init__(self) -> None:"
-        },
-        {
-            "file": "agentic_reliability_framework/arf_core/engine/oss_mcp_client.py",
-            "line": 91,
-            "pattern": r"def __init__\(.*\):",
-            "replacement": "def __init__(self, config: Optional[Dict[str, Any]] = None) -> None:"
-        },
-    ]
-    
-    for fix in fixes:
-        filepath = Path(fix["file"])
-        if not filepath.exists():
-            print(f"❌ File not found: {filepath}")
-            continue
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pytest pytest-asyncio pytest-cov
+        pip install -e .
         
-        with open(filepath, 'r') as f:
-            content = f.read()
+    - name: Run OSS-specific tests
+      run: |
+        # Run OSS boundary tests
+        python -m pytest tests/test_oss_*.py -v --tb=short
         
-        # Find and replace
-        new_content = re.sub(fix["pattern"], fix["replacement"], content)
+    - name: Run core functionality tests
+      run: |
+        # Run core tests (excluding Enterprise features)
+        python -m pytest tests/ -k "not enterprise" -v --tb=short
         
-        if new_content != content:
-            with open(filepath, 'w') as f:
-                f.write(new_content)
-            print(f"✅ Fixed return type in {fix['file']}:{fix['line']}")
-        else:
-            print(f"⚠️  Pattern not found in {fix['file']}: {fix['pattern']}")
-            
-            # Try to find the actual line
-            lines = content.split('\n')
-            if len(lines) > fix["line"] - 1:
-                print(f"   Actual line {fix['line']}: {lines[fix['line']-1]}")
-
-def fix_mypy_config():
-    """Fix the mypy configuration file"""
-    config_content = """[mypy]
-python_version = 3.10
-warn_return_any = True
-warn_unused_configs = True
-disallow_untyped_defs = False  # Temporarily allow for transition
-disallow_incomplete_defs = True
-check_untyped_defs = True
-disallow_untyped_decorators = False  # Temporarily allow
-warn_redundant_casts = True
-warn_unused_ignores = True
-warn_no_return = True
-warn_unreachable = True
-strict_equality = True
-follow_imports = normal
-implicit_reexport = False
-
-# OSS Core modules - stricter checks
-[mypy-agentic_reliability_framework.arf_core.models.healing_intent]
-disallow_untyped_defs = True
-
-[mypy-agentic_reliability_framework.arf_core.constants]
-disallow_untyped_defs = True
-
-[mypy-agentic_reliability_framework.arf_core.config.oss_config]
-disallow_untyped_defs = True
-
-[mypy-agentic_reliability_framework.arf_core.engine.oss_mcp_client]
-disallow_untyped_defs = True
-
-# Legacy modules - more lenient during transition  
-[mypy-agentic_reliability_framework.engine.*]
-disallow_untyped_defs = False
-
-[mypy-agentic_reliability_framework.memory.*]
-disallow_untyped_defs = False
-
-# Test files - ignore errors
-[mypy-tests.*]
-ignore_errors = True
-"""
+    - name: Run mypy type checking
+      run: |
+        pip install mypy
+        mypy agentic_reliability_framework/ --config-file .mypy.ini --no-error-summary
+        
+  enforce-oss-purity:
+    name: Enforce OSS Purity
+    runs-on: ubuntu-latest
+    needs: test
+    if: ${{ success() && github.ref == 'refs/heads/main' }}
     
-    with open(".mypy.ini", "w") as f:
-        f.write(config_content)
-    print("✅ Created .mypy.ini with proper configuration")
-
-def main():
-    print("🔧 Fixing mypy errors...")
-    
-    # Fix mypy config first
-    fix_mypy_config()
-    
-    # Try to fix specific issues
-    print("\n📝 Checking specific errors:")
-    fix_healing_intent_unreachable()
-    add_return_type_annotations()
-    
-    print("\n💡 Additional manual fixes needed for:")
-    print("   - engine/mcp_server.py (multiple functions)")
-    print("   - memory/rag_graph.py:129")
-    print("\n🎯 Quick template for return types:")
-    print("   Before: def function_name(self, param):")
-    print("   After:  def function_name(self, param: type) -> return_type:")
-    
-    print("\n✅ Run mypy again to check remaining issues:")
-    print("   mypy agentic_reliability_framework/ --config-file .mypy.ini")
-
-if __name__ == "__main__":
-    main()
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+        
+    - name: Install dependencies
+      run: |
+        pip install astunparse
+        
+    - name: Run OSS purity enforcement
+      run: |
+        python scripts/enforce_oss_purity.py
+        
+    - name: Verify no Enterprise imports in OSS
+      run: |
+        echo "Checking for Enterprise imports in OSS code..."
+        
+        # Check OSS directories for Enterprise imports
+        if grep -r "from arf_enterprise\|import arf_enterprise" agentic_reliability_framework/arf_core/; then
+          echo "❌ Found Enterprise imports in OSS core code"
+          exit 1
+        fi
+        
+        if grep -r "LicenseManager\|EnterpriseMCPServer" agentic_reliability_framework/arf_core/; then
+          echo "❌ Found Enterprise class references in OSS core code"
+          exit 1
+        fi
+        
+        echo "✅ OSS code is pure"
