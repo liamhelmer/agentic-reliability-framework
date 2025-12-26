@@ -494,33 +494,45 @@ def create_alert_tool() -> MCPTool:
 
 
 # ========== OSS INTEGRATION IMPORT ==========
-# FIXED IMPORT PATHS - Use correct relative imports
+# CORRECTED: Use wrapper pattern to avoid circular dependencies
 try:
-    # FIXED: Use correct import path for OSSMCPClient
-    from ..arf_core.engine.oss_mcp_client import OSSMCPClient, create_oss_mcp_client
+    # First, try to import from local wrapper
+    from .oss_mcp_client_wrapper import (
+        OSSMCPClient, 
+        create_oss_mcp_client,
+        HEALING_INTENT_AVAILABLE,
+        HealingIntent
+    )
     OSS_CLIENT_AVAILABLE = True
-    logger.info("✅ Successfully imported OSSMCPClient from arf_core.engine.oss_mcp_client")
+    logger.info("✅ Using OSS wrapper for client integration")
+    
 except ImportError as e:
-    logger.warning(f"OSSMCPClient not available: {e}. Trying simple_mcp_client...")
-    try:
-        # Fallback to simple client
-        from ..arf_core.engine.simple_mcp_client import OSSMCPClient, create_mcp_client
-        create_oss_mcp_client = create_mcp_client
-        OSS_CLIENT_AVAILABLE = True
-        logger.info("✅ Using simple_mcp_client as fallback")
-    except ImportError as e2:
-        logger.warning(f"Simple MCP client also not available: {e2}. Using fallback advisory mode.")
-        OSS_CLIENT_AVAILABLE = False
-
-# Import HealingIntent for OSS analysis
-try:
-    # FIXED: Use correct import path for HealingIntent
-    from ..arf_core.models.healing_intent import HealingIntent
-    HEALING_INTENT_AVAILABLE = True
-    logger.info("✅ Successfully imported HealingIntent from arf_core.models.healing_intent")
-except ImportError as e:
-    logger.warning(f"HealingIntent not available: {e}. Using basic advisory mode.")
+    logger.warning(f"OSS wrapper not available: {e}. Creating fallback advisory mode.")
+    OSS_CLIENT_AVAILABLE = False
     HEALING_INTENT_AVAILABLE = False
+    HealingIntent = None  # Type placeholder
+    
+    # Fallback: Define simple HealingIntent locally
+    @dataclass
+    class SimpleHealingIntent:
+        """Fallback HealingIntent for when OSS package is not available"""
+        action: str
+        component: str
+        parameters: Dict[str, Any]
+        justification: str = ""
+        incident_id: str = ""
+        confidence: float = 0.85
+        
+        def to_enterprise_request(self):
+            return {
+                "action": self.action,
+                "component": self.component,
+                "parameters": self.parameters,
+                "justification": self.justification,
+                "requires_enterprise": True,
+            }
+    
+    HealingIntent = SimpleHealingIntent
 
 
 # ========== MCP SERVER (OSS EDITION) ==========
