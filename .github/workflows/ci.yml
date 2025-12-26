@@ -1,51 +1,3 @@
-# .github/workflows/ci.yml
-name: CI
-
-on:
-  push:
-    branches: [main, develop]
-    paths:
-      - 'agentic_reliability_framework/**'
-      - 'Test/**'
-      - '.github/workflows/ci.yml'
-      - 'pyproject.toml'
-      - 'setup.py'
-  pull_request:
-    branches: [main]
-
-env:
-  # OSS-COMPLIANT ENVIRONMENT - DO NOT SET LEARNING_ENABLED
-  MCP_MODE: "advisory"
-  MAX_INCIDENT_HISTORY: "1000"
-  GRAPH_STORAGE: "in_memory"
-  PYTHONPATH: "${{ github.workspace }}"
-
-jobs:
-  test:
-    name: Test (${{ matrix.python-version }})
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ["3.10", "3.11", "3.12"]
-    
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v4
-        with:
-          python-version: ${{ matrix.python-version }}
-          
-      - name: Install package and dependencies
-        run: |
-          pip install -e .
-          pip install pytest pytest-asyncio pytest-cov httpx numpy
-          
-      - name: Create test directory if missing
-        run: |
-          # Create tests directory if it doesn't exist
-          mkdir -p tests
-          
       - name: Run SIMPLE OSS import test
         env:
           MCP_MODE: "advisory"
@@ -58,435 +10,102 @@ jobs:
           unset LEARNING_ENABLED 2>/dev/null || true
           
           cat > test_oss_simple.py << 'EOF'
-import os
-import sys
-
-# CRITICAL: Clean environment BEFORE any imports
-if 'LEARNING_ENABLED' in os.environ:
-    del os.environ['LEARNING_ENABLED']
-
-# Set OSS environment
-os.environ.update({
-    'MCP_MODE': 'advisory',
-    'MAX_INCIDENT_HISTORY': '1000',
-    'GRAPH_STORAGE': 'in_memory',
-})
-
-print("🔧 Environment cleaned for OSS test")
-print(f"  MCP_MODE: {os.environ.get('MCP_MODE')}")
-print(f"  MAX_INCIDENT_HISTORY: {os.environ.get('MAX_INCIDENT_HISTORY')}")
-print(f"  GRAPH_STORAGE: {os.environ.get('GRAPH_STORAGE')}")
-print(f"  LEARNING_ENABLED: {os.environ.get('LEARNING_ENABLED', 'NOT SET (good)')}")
-
-# Test 1: Import HealingIntent directly
-try:
-    # Import HealingIntent module directly
-    sys.path.insert(0, '.')
-    from agentic_reliability_framework.arf_core.models.healing_intent import HealingIntent
-    from datetime import datetime
-    
-    print('✅ HealingIntent import successful')
-    
-    intent = HealingIntent(
-        action='restart_container',
-        component='api-service',
-        parameters={'force': True},
-        justification='High latency detected',
-        confidence=0.85,
-        incident_id='inc-001',
-        detected_at=datetime.now().timestamp()
-    )
-    
-    print(f'✅ HealingIntent created: {intent.intent_id}')
-    print(f'  Action: {intent.action}')
-    print(f'  Component: {intent.component}')
-    print(f'  Confidence: {intent.confidence:.2f}')
-    print(f'  Requires Enterprise: {intent.requires_enterprise}')
-    
-except Exception as e:
-    print(f'❌ HealingIntent failed: {e}')
-    import traceback
-    traceback.print_exc()
-    sys.exit(1)
-
-# Test 2: Try to import OSSMCPClient
-print("\n🔍 Testing OSSMCPClient import...")
-try:
-    # Try from simple_mcp_client first (in arf_core)
-    from agentic_reliability_framework.arf_core.engine.simple_mcp_client import OSSMCPClient
-    print('✅ OSSMCPClient imported from arf_core.engine.simple_mcp_client')
-    
-    client = OSSMCPClient()
-    print(f'✅ OSSMCPClient created: {client.mode} mode')
-    
-    # Test async functionality
-    import asyncio
-    
-    async def test_async():
-        result = await client.execute_tool({
-            'tool': 'restart_container',
-            'component': 'api-service',
-            'parameters': {'force': True},
-            'justification': 'Test',
-            'metadata': {'incident_id': 'test-001'}
-        })
-        print(f'✅ Async test: {result["status"]}')
-        assert result['executed'] == False, "OSS must not execute"
-    
-    asyncio.run(test_async())
-    
-except Exception as e:
-    print(f'⚠️  OSSMCPClient from simple_mcp_client failed: {e}')
-    
-    # Try from engine.oss_mcp_client
-    try:
-        from agentic_reliability_framework.engine.oss_mcp_client import OSSMCPClient as Client2
-        print('✅ OSSMCPClient imported from engine.oss_mcp_client')
-        
-        client = Client2()
-        print(f'✅ OSSMCPClient created: {client.mode} mode')
-        
-    except Exception as e2:
-        print(f'❌ Both imports failed: {e2}')
-        print('\n💡 Check these files exist:')
-        print('   - agentic_reliability_framework/arf_core/engine/simple_mcp_client.py')
-        print('   - agentic_reliability_framework/engine/oss_mcp_client.py')
-        sys.exit(1)
-
-print('\n🎉 OSS import test completed successfully!')
-EOF
+          import os
+          import sys
+          
+          # CRITICAL: Clean environment BEFORE any imports
+          if 'LEARNING_ENABLED' in os.environ:
+              del os.environ['LEARNING_ENABLED']
+          
+          # Set OSS environment
+          os.environ.update({
+              'MCP_MODE': 'advisory',
+              'MAX_INCIDENT_HISTORY': '1000',
+              'GRAPH_STORAGE': 'in_memory',
+          })
+          
+          print("🔧 Environment cleaned for OSS test")
+          print(f"  MCP_MODE: {os.environ.get('MCP_MODE')}")
+          print(f"  MAX_INCIDENT_HISTORY: {os.environ.get('MAX_INCIDENT_HISTORY')}")
+          print(f"  GRAPH_STORAGE: {os.environ.get('GRAPH_STORAGE')}")
+          print(f"  LEARNING_ENABLED: {os.environ.get('LEARNING_ENABLED', 'NOT SET (good)')}")
+          
+          # Test 1: Import HealingIntent directly
+          try:
+              # Import HealingIntent module directly
+              sys.path.insert(0, '.')
+              from agentic_reliability_framework.arf_core.models.healing_intent import HealingIntent
+              from datetime import datetime
+              
+              print('✅ HealingIntent import successful')
+              
+              intent = HealingIntent(
+                  action='restart_container',
+                  component='api-service',
+                  parameters={'force': True},
+                  justification='High latency detected',
+                  confidence=0.85,
+                  incident_id='inc-001',
+                  detected_at=datetime.now().timestamp()
+              )
+              
+              print(f'✅ HealingIntent created: {intent.intent_id}')
+              print(f'  Action: {intent.action}')
+              print(f'  Component: {intent.component}')
+              print(f'  Confidence: {intent.confidence:.2f}')
+              print(f'  Requires Enterprise: {intent.requires_enterprise}')
+              
+          except Exception as e:
+              print(f'❌ HealingIntent failed: {e}')
+              import traceback
+              traceback.print_exc()
+              sys.exit(1)
+          
+          # Test 2: Try to import OSSMCPClient
+          print("\n🔍 Testing OSSMCPClient import...")
+          try:
+              # Try from simple_mcp_client first (in arf_core)
+              from agentic_reliability_framework.arf_core.engine.simple_mcp_client import OSSMCPClient
+              print('✅ OSSMCPClient imported from arf_core.engine.simple_mcp_client')
+              
+              client = OSSMCPClient()
+              print(f'✅ OSSMCPClient created: {client.mode} mode')
+              
+              # Test async functionality
+              import asyncio
+              
+              async def test_async():
+                  result = await client.execute_tool({
+                      'tool': 'restart_container',
+                      'component': 'api-service',
+                      'parameters': {'force': True},
+                      'justification': 'Test',
+                      'metadata': {'incident_id': 'test-001'}
+                  })
+                  print(f'✅ Async test: {result["status"]}')
+                  assert result['executed'] == False, "OSS must not execute"
+              
+              asyncio.run(test_async())
+              
+          except Exception as e:
+              print(f'⚠️  OSSMCPClient from simple_mcp_client failed: {e}')
+              
+              # Try from engine.oss_mcp_client
+              try:
+                  from agentic_reliability_framework.engine.oss_mcp_client import OSSMCPClient as Client2
+                  print('✅ OSSMCPClient imported from engine.oss_mcp_client')
+                  
+                  client = Client2()
+                  print(f'✅ OSSMCPClient created: {client.mode} mode')
+                  
+              except Exception as e2:
+                  print(f'❌ Both imports failed: {e2}')
+                  print('\n💡 Check these files exist:')
+                  print('   - agentic_reliability_framework/arf_core/engine/simple_mcp_client.py')
+                  print('   - agentic_reliability_framework/engine/oss_mcp_client.py')
+                  sys.exit(1)
+          
+          print('\n🎉 OSS import test completed successfully!')
+          EOF
           
           python test_oss_simple.py
-          
-      - name: Create test file in Test directory
-        run: |
-          echo "📝 Creating OSS test file in Test/ directory..."
-          
-          cat > Test/test_oss_simple_imports.py << 'EOF'
-"""
-Simple OSS import tests that avoid triggering config validation
-"""
-
-import os
-import pytest
-
-# Clean environment for OSS tests
-os.environ.update({
-    'MCP_MODE': 'advisory',
-    'MAX_INCIDENT_HISTORY': '1000',
-    'GRAPH_STORAGE': 'in_memory',
-})
-
-# Ensure LEARNING_ENABLED is not set
-if 'LEARNING_ENABLED' in os.environ:
-    del os.environ['LEARNING_ENABLED']
-
-
-def test_healing_intent():
-    """Test HealingIntent can be imported"""
-    # Import directly to avoid circular imports
-    from agentic_reliability_framework.arf_core.models.healing_intent import HealingIntent
-    from datetime import datetime
-    
-    intent = HealingIntent(
-        action='test',
-        component='test',
-        parameters={},
-        justification='test',
-        confidence=0.5,
-        incident_id='test',
-        detected_at=datetime.now().timestamp()
-    )
-    
-    assert intent.action == 'test'
-    assert intent.requires_enterprise is True
-    print(f'✅ HealingIntent: {intent.intent_id}')
-
-
-@pytest.mark.asyncio
-async def test_ossmcpclient_direct():
-    """Test OSSMCPClient direct import"""
-    # Try from simple_mcp_client first
-    try:
-        from agentic_reliability_framework.arf_core.engine.simple_mcp_client import OSSMCPClient
-        print('✅ Using simple_mcp_client')
-    except ImportError:
-        # Fallback to oss_mcp_client
-        from agentic_reliability_framework.engine.oss_mcp_client import OSSMCPClient
-        print('✅ Using oss_mcp_client')
-    
-    client = OSSMCPClient()
-    stats = client.get_client_stats()
-    
-    assert stats['mode'] == 'advisory'
-    assert stats['oss_edition'] is True
-    assert stats['can_execute'] is False
-    print(f'✅ OSSMCPClient: {stats}')
-    
-    # Test async functionality
-    result = await client.execute_tool({
-        'tool': 'restart_container',
-        'component': 'api-service',
-        'parameters': {'force': True},
-        'justification': 'Test',
-        'metadata': {'incident_id': 'test-001'}
-    })
-    
-    assert result['executed'] is False
-    assert 'requires_enterprise' in str(result)
-    print(f'✅ OSS analysis: {result["status"]}')
-
-
-if __name__ == '__main__':
-    test_healing_intent()
-    import asyncio
-    asyncio.run(test_ossmcpclient_direct())
-    print('✅ All OSS tests passed!')
-EOF
-          
-      - name: Run existing OSS tests
-        env:
-          MCP_MODE: "advisory"
-          MAX_INCIDENT_HISTORY: "1000"
-          GRAPH_STORAGE: "in_memory"
-        run: |
-          echo "🧪 Running existing OSS tests from Test/ directory..."
-          
-          # List OSS test files
-          echo "📁 OSS test files:"
-          find Test/ -name "*.py" -type f | grep -i oss || echo "No OSS test files found"
-          
-          # Run any OSS tests
-          python -m pytest Test/ -v --tb=short -k "oss" 2>&1 | head -100 || echo "⚠️  OSS tests may have failed"
-          
-      - name: Run other tests (excluding enterprise)
-        env:
-          MCP_MODE: "advisory"
-          MAX_INCIDENT_HISTORY: "1000"
-          GRAPH_STORAGE: "in_memory"
-        run: |
-          echo "🧪 Running other tests from Test/ directory..."
-          python -m pytest Test/ -v --tb=short -k "not enterprise" 2>&1 | tail -50 || echo "⚠️  Some tests may have failed"
-          
-      - name: Run minimal coverage with fallback
-        run: |
-          echo "📊 Running minimal coverage..."
-          
-          # Run coverage with timeout
-          timeout 120 python -m pytest Test/ -k "not enterprise" \
-            --cov=agentic_reliability_framework \
-            --cov-report=xml:coverage.xml \
-            --cov-report=html:htmlcov 2>&1 | tail -50 || echo "⚠️  Coverage may be incomplete"
-          
-      - name: Ensure coverage files exist (CRITICAL FIX)
-        if: always()
-        run: |
-          echo "📋 Ensuring coverage files exist..."
-          
-          # Create dummy coverage.xml if it doesn't exist
-          if [ ! -f "coverage.xml" ]; then
-            cat > coverage.xml << 'EOF'
-<?xml version="1.0" encoding="UTF-8"?>
-<coverage version="7.6.5" timestamp="$(date +%s)">
-  <sources>
-    <source>$(pwd)</source>
-  </sources>
-  <packages>
-    <package name="agentic_reliability_framework" line-rate="0.85" branch-rate="0.75" complexity="0">
-      <classes>
-        <class name="arf_core" filename="agentic_reliability_framework/arf_core/__init__.py" line-rate="1.0" branch-rate="1.0" complexity="0"/>
-      </classes>
-    </package>
-  </packages>
-</coverage>
-EOF
-            echo "✅ Created dummy coverage.xml"
-          else
-            echo "✅ coverage.xml already exists"
-          fi
-          
-          # Create htmlcov directory if it doesn't exist
-          mkdir -p htmlcov
-          
-          # Create minimal index.html if it doesn't exist
-          if [ ! -f "htmlcov/index.html" ]; then
-            cat > htmlcov/index.html << 'EOF'
-<!DOCTYPE html>
-<html>
-<head>
-    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-    <title>Coverage Report</title>
-    <style>
-        body { font-family: sans-serif; padding: 20px; }
-        .header { background: #f0f0f0; padding: 10px; border-radius: 5px; }
-        .coverage { margin: 20px 0; }
-        .success { color: green; }
-        .warning { color: orange; }
-    </style>
-</head>
-<body>
-    <div class="header">
-        <h1>Coverage Report</h1>
-        <p>Generated: $(date)</p>
-        <p>Test suite completed successfully. Detailed coverage requires running tests with coverage enabled.</p>
-    </div>
-    <div class="coverage">
-        <h2>Summary</h2>
-        <p><span class="success">✅ OSS Core Modules: 85%</span></p>
-        <p><span class="warning">⚠️  Coverage limited by test configuration</span></p>
-    </div>
-</body>
-</html>
-EOF
-            echo "✅ Created dummy htmlcov/index.html"
-          else
-            echo "✅ htmlcov/index.html already exists"
-          fi
-          
-          # Create style.css for htmlcov
-          cat > htmlcov/style.css << 'EOF'
-body { font-family: sans-serif; margin: 20px; }
-.header { background: #f8f9fa; padding: 20px; border-radius: 5px; }
-.coverage { margin: 20px 0; }
-.success { color: #28a745; font-weight: bold; }
-.warning { color: #ffc107; font-weight: bold; }
-.error { color: #dc3545; font-weight: bold; }
-EOF
-          
-      - name: Upload coverage reports
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-${{ matrix.python-version }}
-          path: |
-            coverage.xml
-            htmlcov/
-  
-  build:
-    name: Build Package
-    runs-on: ubuntu-latest
-    needs: [test]
-    
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: "3.11"
-          
-      - name: Install build tools
-        run: |
-          pip install build
-          
-      - name: Build package
-        run: |
-          python -m build
-          
-      - name: Test installed package
-        run: |
-          echo "📦 Testing installed package..."
-          
-          # Clean environment
-          export MCP_MODE="advisory"
-          export MAX_INCIDENT_HISTORY="1000"
-          export GRAPH_STORAGE="in_memory"
-          unset LEARNING_ENABLED 2>/dev/null || true
-          
-          # Install from built wheel
-          pip install dist/*.whl --force-reinstall
-          
-          # Test with clean environment
-          python -c "
-import os
-
-# Ensure clean environment
-os.environ['MCP_MODE'] = 'advisory'
-os.environ['MAX_INCIDENT_HISTORY'] = '1000'
-os.environ['GRAPH_STORAGE'] = 'in_memory'
-if 'LEARNING_ENABLED' in os.environ:
-    del os.environ['LEARNING_ENABLED']
-
-# Test basic imports
-import agentic_reliability_framework
-print(f'✅ Main package: {agentic_reliability_framework.__version__}')
-
-# Test HealingIntent
-try:
-    from agentic_reliability_framework.arf_core.models.healing_intent import HealingIntent
-    from datetime import datetime
-    
-    intent = HealingIntent(
-        action='test',
-        component='test',
-        parameters={},
-        justification='test',
-        confidence=0.5,
-        incident_id='test',
-        detected_at=datetime.now().timestamp()
-    )
-    print(f'✅ HealingIntent: {intent.intent_id}')
-except Exception as e:
-    print(f'⚠️  HealingIntent: {e}')
-
-# Test OSSMCPClient
-try:
-    # Try simple version first
-    from agentic_reliability_framework.arf_core.engine.simple_mcp_client import OSSMCPClient
-    print('✅ OSSMCPClient (simple) import works')
-except ImportError:
-    try:
-        # Try original version
-        from agentic_reliability_framework.engine.oss_mcp_client import OSSMCPClient
-        print('✅ OSSMCPClient (original) import works')
-    except ImportError as e:
-        print(f'⚠️  OSSMCPClient import failed: {e}')
-
-print('📦 Package installation test completed')
-"
-          
-      - name: Upload built packages
-        uses: actions/upload-artifact@v4
-        with:
-          name: dist
-          path: dist/
-  
-  summary:
-    name: Summary
-    runs-on: ubuntu-latest
-    needs: [test, build]
-    if: always()
-    
-    steps:
-      - name: Print success message
-        if: success()
-        run: |
-          echo "=========================================="
-          echo "🎉 CI PASSED!"
-          echo "=========================================="
-          echo ""
-          echo "✅ OSS imports work"
-          echo "✅ Tests passed on all Python versions"
-          echo "✅ Coverage reports generated"
-          echo "✅ Package builds successfully"
-          echo ""
-          echo "📦 OSS package is ready for PyPI release!"
-          echo ""
-          echo "📁 Using Test/ directory (not tests/)"
-          
-      - name: Print failure help
-        if: failure()
-        run: |
-          echo "=========================================="
-          echo "❌ CI FAILED"
-          echo "=========================================="
-          echo ""
-          echo "Most likely: Directory or import issues"
-          echo ""
-          echo "Check these:"
-          echo "1. Test directory exists: Test/ (not tests/)"
-          echo "2. simple_mcp_client.py exists: agentic_reliability_framework/arf_core/engine/simple_mcp_client.py"
-          echo "3. arf_core/__init__.py points to correct location"
-          echo ""
-          echo "Quick test:"
-          echo 'python -c "from agentic_reliability_framework.arf_core.engine.simple_mcp_client import OSSMCPClient; print(\"✅ OSSMCPClient imported\")"'
