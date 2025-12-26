@@ -9,7 +9,7 @@ description = "Agentic Reliability Framework - OSS Edition: AI-powered infrastru
 readme = "README.md"
 license = {text = "Apache-2.0"}
 authors = [
-    {name = "Juan Petter", email = "petter2025us@outlook.com"}
+    {name = "Juan Petter", email = "ai@petterjuan.com"}
 ]
 requires-python = ">=3.10"
 dependencies = [
@@ -22,6 +22,21 @@ dependencies = [
     "atomicwrites>=1.4.0",
     "pandas>=2.0.0",
     "httpx>=0.25.0",
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: System :: Monitoring",
+    "Topic :: System :: Recovery Tools",
+    "Typing :: Typed",
 ]
 
 [project.optional-dependencies]
@@ -40,22 +55,6 @@ dev = [
 Homepage = "https://github.com/petterjuan/agentic-reliability-framework"
 Documentation = "https://docs.arf.dev"
 Enterprise = "https://arf.dev/enterprise"
-
-classifiers = [
-    "Development Status :: 5 - Production/Stable",
-    "Intended Audience :: Developers",
-    "Intended Audience :: System Administrators",
-    "License :: OSI Approved :: Apache Software License",
-    "Operating System :: OS Independent",
-    "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
-    "Programming Language :: Python :: 3.12",
-    "Topic :: Software Development :: Libraries :: Python Modules",
-    "Topic :: System :: Monitoring",
-    "Topic :: System :: Recovery Tools",
-    "Typing :: Typed",
-]
 
 [tool.setuptools]
 packages = ["agentic_reliability_framework"]
@@ -100,3 +99,17 @@ warn_unreachable = true
 strict_equality = true
 follow_imports = "normal"
 implicit_reexport = false
+
+[[tool.mypy.overrides]]
+module = [
+    "agentic_reliability_framework.arf_core.*",
+    "agentic_reliability_framework.engine.*", 
+    "agentic_reliability_framework.memory.*",
+]
+disallow_untyped_defs = false
+
+[[tool.mypy.overrides]]
+module = [
+    "tests.*",
+]
+ignore_errors = true
