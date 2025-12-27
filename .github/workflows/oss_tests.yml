@@ -1,4 +1,4 @@
-# .github/workflows/oss_tests.yml - SIMPLIFIED VERSION
+# .github/workflows/oss_tests.yml - WORKING VERSION
 name: OSS Boundary Tests
 
 on:
@@ -17,6 +17,11 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
       
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+      
     - name: OSS Boundary Validation
       run: |
         echo "🔍 OSS BOUNDARY VALIDATION"
@@ -25,11 +30,7 @@ jobs:
         # Check 1: Required directories exist
         echo ""
         echo "1. Checking required directories..."
-        if [ -d "agentic_reliability_framework" ] && \
-           [ -d "agentic_reliability_framework/arf_core" ] && \
-           [ -d "agentic_reliability_framework/arf_core/models" ] && \
-           [ -d "agentic_reliability_framework/arf_core/engine" ] && \
-           [ -d "agentic_reliability_framework/arf_core/config" ]; then
+        if [ -d "agentic_reliability_framework" ] && [ -d "agentic_reliability_framework/arf_core" ] && [ -d "agentic_reliability_framework/arf_core/models" ] && [ -d "agentic_reliability_framework/arf_core/engine" ] && [ -d "agentic_reliability_framework/arf_core/config" ]; then
           echo "✅ All required directories exist"
         else
           echo "❌ Missing required OSS directories"
@@ -39,17 +40,14 @@ jobs:
         # Check 2: Required files exist
         echo ""
         echo "2. Checking required files..."
-        if [ -f "agentic_reliability_framework/__init__.py" ] && \
-           [ -f "agentic_reliability_framework/arf_core/__init__.py" ] && \
-           [ -f "agentic_reliability_framework/arf_core/constants.py" ] && \
-           [ -f "agentic_reliability_framework/arf_core/models/healing_intent.py" ]; then
+        if [ -f "agentic_reliability_framework/__init__.py" ] && [ -f "agentic_reliability_framework/arf_core/__init__.py" ] && [ -f "agentic_reliability_framework/arf_core/constants.py" ] && [ -f "agentic_reliability_framework/arf_core/models/healing_intent.py" ]; then
           echo "✅ All required files exist"
         else
           echo "❌ Missing required OSS files"
           exit 1
         fi
         
-        # Check 3: Simple Enterprise code check (basic grep)
+        # Check 3: Simple Enterprise code check
         echo ""
         echo "3. Checking for Enterprise code violations..."
         VIOLATIONS=$(grep -r "EnterpriseMCPServer\|enterprise_mcp_server" agentic_reliability_framework/arf_core/ --include="*.py" | grep -v "#" | grep -v "'" | grep -v '"' | wc -l)
@@ -65,7 +63,9 @@ jobs:
         # Check 4: Can import basic OSS module
         echo ""
         echo "4. Testing basic OSS imports..."
-        python3 -c "
+        
+        # Create a simple Python test script
+        cat > /tmp/test_imports.py << 'EOF'
 import sys
 try:
     import agentic_reliability_framework as arf
@@ -95,7 +95,9 @@ except Exception as e:
     import traceback
     traceback.print_exc()
     sys.exit(1)
-        "
+EOF
+        
+        python3 /tmp/test_imports.py
         
         echo ""
         echo "=========================================="
