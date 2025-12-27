@@ -54,7 +54,7 @@ DISALLOWED_ACTIONS: Final[Tuple[str, ...]] = (
 # === VERSION & EDITION ===
 OSS_EDITION: Final[str] = "open-source"
 OSS_LICENSE: Final[str] = "Apache 2.0"
-OSS_VERSION: Final[str] = "3.3.0-oss"
+OSS_VERSION: Final[str] = "3.3.4-oss"
 ENTERPRISE_UPGRADE_URL: Final[str] = "https://arf.dev/enterprise"
 
 # === COMPATIBILITY HASH (for validation) ===
