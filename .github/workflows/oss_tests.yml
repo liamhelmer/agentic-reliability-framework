@@ -1,4 +1,4 @@
-# .github/workflows/oss_tests.yml - WORKING VERSION
+# .github/workflows/oss_tests.yml - FINAL WORKING VERSION
 name: OSS Boundary Tests
 
 on:
@@ -22,89 +22,21 @@ jobs:
       with:
         python-version: '3.9'
       
-    - name: OSS Boundary Validation
+    - name: Install pytest
+      run: pip install pytest
+    
+    - name: Run circular import verification
+      run: python scripts/verify_circular_fix.py --quick
+      
+    - name: Run OSS boundary check
+      run: python scripts/oss_boundary_check.py
+      
+    - name: Run basic tests
+      run: python -m pytest Test/test_basic.py -v
+      
+    - name: Verify imports work
       run: |
-        echo "🔍 OSS BOUNDARY VALIDATION"
-        echo "=========================="
-        
-        # Check 1: Required directories exist
-        echo ""
-        echo "1. Checking required directories..."
-        if [ -d "agentic_reliability_framework" ] && [ -d "agentic_reliability_framework/arf_core" ] && [ -d "agentic_reliability_framework/arf_core/models" ] && [ -d "agentic_reliability_framework/arf_core/engine" ] && [ -d "agentic_reliability_framework/arf_core/config" ]; then
-          echo "✅ All required directories exist"
-        else
-          echo "❌ Missing required OSS directories"
-          exit 1
-        fi
-        
-        # Check 2: Required files exist
-        echo ""
-        echo "2. Checking required files..."
-        if [ -f "agentic_reliability_framework/__init__.py" ] && [ -f "agentic_reliability_framework/arf_core/__init__.py" ] && [ -f "agentic_reliability_framework/arf_core/constants.py" ] && [ -f "agentic_reliability_framework/arf_core/models/healing_intent.py" ]; then
-          echo "✅ All required files exist"
-        else
-          echo "❌ Missing required OSS files"
-          exit 1
-        fi
-        
-        # Check 3: Simple Enterprise code check
-        echo ""
-        echo "3. Checking for Enterprise code violations..."
-        VIOLATIONS=$(grep -r "EnterpriseMCPServer\|enterprise_mcp_server" agentic_reliability_framework/arf_core/ --include="*.py" | grep -v "#" | grep -v "'" | grep -v '"' | wc -l)
-        
-        if [ "$VIOLATIONS" -gt 0 ]; then
-          echo "❌ Found $VIOLATIONS Enterprise code violations"
-          grep -r "EnterpriseMCPServer\|enterprise_mcp_server" agentic_reliability_framework/arf_core/ --include="*.py" | grep -v "#" | grep -v "'" | grep -v '"'
-          exit 1
-        else
-          echo "✅ No Enterprise code violations found"
-        fi
-        
-        # Check 4: Can import basic OSS module
-        echo ""
-        echo "4. Testing basic OSS imports..."
-        
-        # Create a simple Python test script
-        cat > /tmp/test_imports.py << 'EOF'
-import sys
-try:
-    import agentic_reliability_framework as arf
-    print('   ✅ Successfully imported agentic_reliability_framework')
-    print(f'   Version: {arf.__version__}')
-    
-    from agentic_reliability_framework.arf_core import constants
-    print(f'   ✅ OSS constants: {constants.OSS_EDITION}')
-    print(f'   License: {constants.OSS_LICENSE}')
-    
-    from agentic_reliability_framework.arf_core.models import healing_intent
-    print('   ✅ OSS healing_intent module available')
-    
-    from agentic_reliability_framework.arf_core.engine.simple_mcp_client import OSSMCPClient
-    print('   ✅ OSS MCP client available')
-    
-    print('')
-    print('🎉 All OSS imports working correctly!')
-    
-except ImportError as e:
-    print(f'   ❌ Import failed: {e}')
-    import traceback
-    traceback.print_exc()
-    sys.exit(1)
-except Exception as e:
-    print(f'   ⚠️  Other error: {e}')
-    import traceback
-    traceback.print_exc()
-    sys.exit(1)
-EOF
-        
-        python3 /tmp/test_imports.py
-        
-        echo ""
-        echo "=========================================="
-        echo "🎉 OSS BOUNDARY VALIDATION PASSED!"
-        echo "=========================================="
-        echo "✓ All required directories exist"
-        echo "✓ All required files exist"
-        echo "✓ No Enterprise code violations"
-        echo "✓ All OSS imports work correctly"
-        echo "✓ OSS edition is clean and functional"
+        echo "🔍 Final import verification..."
+        python -c "import agentic_reliability_framework; print(f'✅ ARF v{agentic_reliability_framework.__version__}')"
+        python -c "from agentic_reliability_framework import HealingIntent; print('✅ HealingIntent imported')"
+        python -c "from agentic_reliability_framework import OSSMCPClient; print('✅ OSSMCPClient imported')"
