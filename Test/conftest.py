@@ -1,79 +1,145 @@
-"""Pytest configuration - OSS EDITION COMPATIBLE VERSION"""
+"""Pytest configuration - OSS EDITION COMPATIBLE VERSION WITH LAZY IMPORTS"""
 
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 from datetime import datetime, timezone
 import sys
 
+# ============================================================================
+# LAZY IMPORT SYSTEM - Avoid circular imports during test collection
+# ============================================================================
 
-# OSS-compatible imports with fallback
-try:
-    # Try to import models - they might not be available in minimal OSS install
-    from agentic_reliability_framework.models import (
-        ReliabilityEvent, HealingPolicy, PolicyCondition,
-        HealingAction, EventSeverity
+# Global flags to track what's available (initialized as None)
+_MODELS_AVAILABLE = None
+_POLICY_ENGINE_AVAILABLE = None
+
+# Mock classes for when real modules aren't available
+class _MockEventSeverity:
+    LOW = "low"
+    MEDIUM = "medium" 
+    HIGH = "high"
+    CRITICAL = "critical"
+
+class _MockHealingAction:
+    RESTART_CONTAINER = "restart_container"
+    SCALE_HORIZONTAL = "scale_horizontal"
+    ROLLBACK_DEPLOYMENT = "rollback_deployment"
+    TRAFFIC_SHIFT = "traffic_shift"
+    CIRCUIT_BREAKER = "circuit_breaker"
+    ROLLBACK = "rollback"
+    ALERT_TEAM = "alert_team"
+    NO_ACTION = "no_action"
+
+class _MockPolicyCondition:
+    def __init__(self, metric="error_rate", operator="gt", threshold=0.1):
+        self.metric = metric
+        self.operator = operator
+        self.threshold = threshold
+
+class _MockReliabilityEvent:
+    def __init__(self, **kwargs):
+        for key, value in kwargs.items():
+            setattr(self, key, value)
+
+class _MockHealingPolicy:
+    def __init__(self, **kwargs):
+        for key, value in kwargs.items():
+            setattr(self, key, value)
+
+class _MockPolicyEngine:
+    def __init__(self):
+        self.policies = []
+    
+    def add_policy(self, policy):
+        self.policies.append(policy)
+
+
+def _lazy_check_models():
+    """Lazily check if models module is available"""
+    global _MODELS_AVAILABLE
+    
+    if _MODELS_AVAILABLE is None:
+        try:
+            # Try to import models - but ONLY when needed
+            from agentic_reliability_framework.models import (
+                ReliabilityEvent, HealingPolicy, PolicyCondition,
+                HealingAction, EventSeverity
+            )
+            # Store the actual classes for later use
+            _MODELS_AVAILABLE = {
+                'available': True,
+                'ReliabilityEvent': ReliabilityEvent,
+                'HealingPolicy': HealingPolicy,
+                'PolicyCondition': PolicyCondition,
+                'HealingAction': HealingAction,
+                'EventSeverity': EventSeverity
+            }
+            print("✅ Models module available for tests")
+        except ImportError as e:
+            _MODELS_AVAILABLE = {
+                'available': False,
+                'ReliabilityEvent': _MockReliabilityEvent,
+                'HealingPolicy': _MockHealingPolicy,
+                'PolicyCondition': _MockPolicyCondition,
+                'HealingAction': _MockHealingAction,
+                'EventSeverity': _MockEventSeverity
+            }
+            print(f"⚠️  Models module not available in OSS edition (using mocks): {e}")
+    
+    return _MODELS_AVAILABLE
+
+
+def _lazy_check_policy_engine():
+    """Lazily check if PolicyEngine is available"""
+    global _POLICY_ENGINE_AVAILABLE
+    
+    if _POLICY_ENGINE_AVAILABLE is None:
+        try:
+            from agentic_reliability_framework.healing_policies import PolicyEngine
+            _POLICY_ENGINE_AVAILABLE = {
+                'available': True,
+                'PolicyEngine': PolicyEngine
+            }
+            print("✅ PolicyEngine available for tests")
+        except ImportError as e:
+            _POLICY_ENGINE_AVAILABLE = {
+                'available': False,
+                'PolicyEngine': _MockPolicyEngine
+            }
+            print(f"⚠️  PolicyEngine not available in OSS edition (using mocks): {e}")
+    
+    return _POLICY_ENGINE_AVAILABLE
+
+
+def _get_model_classes():
+    """Get model classes (lazy load if needed)"""
+    models_info = _lazy_check_models()
+    return (
+        models_info['ReliabilityEvent'],
+        models_info['HealingPolicy'],
+        models_info['PolicyCondition'],
+        models_info['HealingAction'],
+        models_info['EventSeverity']
     )
-    MODELS_AVAILABLE = True
-    print("✅ Models module available for tests")
-except ImportError as e:
-    MODELS_AVAILABLE = False
-    print(f"⚠️  Models module not available in OSS edition (using mocks): {e}")
-    
-    # Create minimal mock classes for OSS testing
-    class EventSeverity:
-        LOW = "low"
-        MEDIUM = "medium" 
-        HIGH = "high"
-        CRITICAL = "critical"
-    
-    class HealingAction:
-        RESTART_CONTAINER = "restart_container"
-        SCALE_HORIZONTAL = "scale_horizontal"
-        ROLLBACK_DEPLOYMENT = "rollback_deployment"
-        TRAFFIC_SHIFT = "traffic_shift"
-        CIRCUIT_BREAKER = "circuit_breaker"
-        ROLLBACK = "rollback"
-        ALERT_TEAM = "alert_team"
-        NO_ACTION = "no_action"
-    
-    # Minimal classes for fixtures
-    class PolicyCondition:
-        def __init__(self, metric="error_rate", operator="gt", threshold=0.1):
-            self.metric = metric
-            self.operator = operator
-            self.threshold = threshold
-    
-    class ReliabilityEvent:
-        def __init__(self, **kwargs):
-            for key, value in kwargs.items():
-                setattr(self, key, value)
-    
-    class HealingPolicy:
-        def __init__(self, **kwargs):
-            for key, value in kwargs.items():
-                setattr(self, key, value)
 
 
-# Try to import PolicyEngine with fallback
-try:
-    from agentic_reliability_framework.healing_policies import PolicyEngine
-    POLICY_ENGINE_AVAILABLE = True
-    print("✅ PolicyEngine available for tests")
-except ImportError as e:
-    POLICY_ENGINE_AVAILABLE = False
-    print(f"⚠️  PolicyEngine not available in OSS edition (using mocks): {e}")
-    
-    class PolicyEngine:
-        def __init__(self):
-            self.policies = []
-        
-        def add_policy(self, policy):
-            self.policies.append(policy)
+def _get_policy_engine_class():
+    """Get PolicyEngine class (lazy load if needed)"""
+    engine_info = _lazy_check_policy_engine()
+    return engine_info['PolicyEngine']
 
+
+# ============================================================================
+# FIXTURES WITH LAZY IMPORTS
+# ============================================================================
 
 @pytest.fixture
 def sample_event():
-    if MODELS_AVAILABLE:
+    """Fixture that lazily imports models"""
+    ReliabilityEvent, _, _, _, EventSeverity = _get_model_classes()
+    
+    models_info = _lazy_check_models()
+    if models_info['available']:
         return ReliabilityEvent(
             component="test-service",
             timestamp=datetime.now(timezone.utc),
@@ -103,7 +169,11 @@ def sample_event():
 
 @pytest.fixture
 def normal_event():
-    if MODELS_AVAILABLE:
+    """Normal event fixture with lazy imports"""
+    ReliabilityEvent, _, _, _, EventSeverity = _get_model_classes()
+    
+    models_info = _lazy_check_models()
+    if models_info['available']:
         return ReliabilityEvent(
             component="test-service",
             timestamp=datetime.now(timezone.utc),
@@ -132,7 +202,11 @@ def normal_event():
 
 @pytest.fixture
 def critical_event():
-    if MODELS_AVAILABLE:
+    """Critical event fixture with lazy imports"""
+    ReliabilityEvent, _, _, _, EventSeverity = _get_model_classes()
+    
+    models_info = _lazy_check_models()
+    if models_info['available']:
         return ReliabilityEvent(
             component="critical-service",
             timestamp=datetime.now(timezone.utc),
@@ -159,7 +233,11 @@ def critical_event():
 
 @pytest.fixture
 def sample_policy():
-    if MODELS_AVAILABLE:
+    """Sample policy fixture with lazy imports"""
+    _, HealingPolicy, PolicyCondition, HealingAction, _ = _get_model_classes()
+    
+    models_info = _lazy_check_models()
+    if models_info['available']:
         return HealingPolicy(
             name="Restart on High Errors",
             description="Restart when error rate > 10%",
@@ -176,7 +254,7 @@ def sample_policy():
         mock_policy = type('MockPolicy', (), {
             'name': 'Restart on High Errors',
             'description': 'Restart when error rate > 10%',
-            'conditions': [PolicyCondition(metric="error_rate", operator="gt", threshold=0.10)],
+            'conditions': [_MockPolicyCondition(metric="error_rate", operator="gt", threshold=0.10)],
             'actions': ['restart_container'],
             'cooldown_seconds': 300,
             'enabled': True
@@ -186,7 +264,11 @@ def sample_policy():
 
 @pytest.fixture
 def scale_policy():
-    if MODELS_AVAILABLE:
+    """Scale policy fixture with lazy imports"""
+    _, HealingPolicy, PolicyCondition, HealingAction, _ = _get_model_classes()
+    
+    models_info = _lazy_check_models()
+    if models_info['available']:
         return HealingPolicy(
             name="Scale on High CPU",
             description="Scale when CPU > 80%",
@@ -203,7 +285,7 @@ def scale_policy():
         mock_policy = type('MockPolicy', (), {
             'name': 'Scale on High CPU',
             'description': 'Scale when CPU > 80%',
-            'conditions': [PolicyCondition(metric="cpu_util", operator="gt", threshold=0.80)],
+            'conditions': [_MockPolicyCondition(metric="cpu_util", operator="gt", threshold=0.80)],
             'actions': ['scale_horizontal'],
             'cooldown_seconds': 600,
             'enabled': True
@@ -213,7 +295,11 @@ def scale_policy():
 
 @pytest.fixture
 def rollback_policy():
-    if MODELS_AVAILABLE:
+    """Rollback policy fixture with lazy imports"""
+    _, HealingPolicy, PolicyCondition, HealingAction, _ = _get_model_classes()
+    
+    models_info = _lazy_check_models()
+    if models_info['available']:
         return HealingPolicy(
             name="Rollback on Critical",
             description="Rollback on error rate > 30%",
@@ -230,7 +316,7 @@ def rollback_policy():
         mock_policy = type('MockPolicy', (), {
             'name': 'Rollback on Critical',
             'description': 'Rollback on error rate > 30%',
-            'conditions': [PolicyCondition(metric="error_rate", operator="gt", threshold=0.30)],
+            'conditions': [_MockPolicyCondition(metric="error_rate", operator="gt", threshold=0.30)],
             'actions': ['rollback_deployment'],
             'cooldown_seconds': 900,
             'enabled': True
@@ -240,7 +326,11 @@ def rollback_policy():
 
 @pytest.fixture
 def disabled_policy():
-    if MODELS_AVAILABLE:
+    """Disabled policy fixture with lazy imports"""
+    _, HealingPolicy, PolicyCondition, HealingAction, _ = _get_model_classes()
+    
+    models_info = _lazy_check_models()
+    if models_info['available']:
         return HealingPolicy(
             name="Disabled Policy",
             description="Should never execute",
@@ -257,7 +347,7 @@ def disabled_policy():
         mock_policy = type('MockPolicy', (), {
             'name': 'Disabled Policy',
             'description': 'Should never execute',
-            'conditions': [PolicyCondition(metric="error_rate", operator="gt", threshold=0.01)],
+            'conditions': [_MockPolicyCondition(metric="error_rate", operator="gt", threshold=0.01)],
             'actions': ['restart_container'],
             'cooldown_seconds': 300,
             'enabled': False
@@ -267,14 +357,14 @@ def disabled_policy():
 
 @pytest.fixture
 def policy_engine():
-    if POLICY_ENGINE_AVAILABLE:
-        return PolicyEngine()
-    else:
-        return PolicyEngine()  # Use mock class
+    """PolicyEngine fixture with lazy imports"""
+    PolicyEngineClass = _get_policy_engine_class()
+    return PolicyEngineClass()
 
 
 @pytest.fixture
 def policy_engine_with_policies(sample_policy, scale_policy):
+    """PolicyEngine with policies fixture"""
     engine = policy_engine()  # Use the fixture
     engine.add_policy(sample_policy)
     engine.add_policy(scale_policy)
@@ -283,6 +373,7 @@ def policy_engine_with_policies(sample_policy, scale_policy):
 
 @pytest.fixture
 def mock_faiss_memory():
+    """Mock FAISS memory fixture"""
     mock = MagicMock()
     mock.search_similar = AsyncMock(return_value=[])
     mock.add_incident = AsyncMock()
@@ -291,6 +382,7 @@ def mock_faiss_memory():
 
 @pytest.fixture
 def event_factory():
+    """Event factory fixture with lazy imports"""
     def _create_event(
         component: str = "test-service",
         latency_p99: float = 150.0,
@@ -300,7 +392,10 @@ def event_factory():
         memory_util: float = 0.65,
         severity: str = "medium"
     ):
-        if MODELS_AVAILABLE:
+        ReliabilityEvent, _, _, _, EventSeverity = _get_model_classes()
+        
+        models_info = _lazy_check_models()
+        if models_info['available']:
             severity_enum = getattr(EventSeverity, severity.upper())
             return ReliabilityEvent(
                 component=component,
@@ -329,6 +424,7 @@ def event_factory():
 
 @pytest.fixture
 def policy_factory():
+    """Policy factory fixture with lazy imports"""
     def _create_policy(
         name: str = "Test Policy",
         metric: str = "error_rate",
@@ -338,7 +434,10 @@ def policy_factory():
         cooldown_seconds: int = 300,
         enabled: bool = True
     ):
-        if MODELS_AVAILABLE:
+        _, HealingPolicy, PolicyCondition, HealingAction, _ = _get_model_classes()
+        
+        models_info = _lazy_check_models()
+        if models_info['available']:
             action_enum = getattr(HealingAction, action.upper()) if hasattr(HealingAction, action.upper()) else HealingAction.RESTART_CONTAINER
             return HealingPolicy(
                 name=name,
@@ -356,7 +455,7 @@ def policy_factory():
             mock_policy = type('MockPolicy', (), {
                 'name': name,
                 'description': f'Policy for {metric} {operator} {threshold}',
-                'conditions': [PolicyCondition(metric=metric, operator=operator, threshold=threshold)],
+                'conditions': [_MockPolicyCondition(metric=metric, operator=operator, threshold=threshold)],
                 'actions': [action],
                 'cooldown_seconds': cooldown_seconds,
                 'enabled': enabled
@@ -366,6 +465,7 @@ def policy_factory():
 
 
 def pytest_configure(config):
+    """Pytest configuration"""
     config.addinivalue_line("markers", "slow: marks tests as slow")
     config.addinivalue_line("markers", "integration: integration tests")
     config.addinivalue_line("markers", "unit: unit tests")
@@ -375,7 +475,10 @@ def pytest_configure(config):
 @pytest.fixture
 def trigger_event():
     """Event that triggers sample_policy (error_rate > 0.10)"""
-    if MODELS_AVAILABLE:
+    ReliabilityEvent, _, _, _, EventSeverity = _get_model_classes()
+    
+    models_info = _lazy_check_models()
+    if models_info['available']:
         return ReliabilityEvent(
             component="failing-service",
             timestamp=datetime.now(timezone.utc),
@@ -440,3 +543,18 @@ def clear_module_cache():
         return cleared
     
     return _clear_cache
+
+
+@pytest.fixture(autouse=True)
+def setup_test_environment():
+    """Auto-use fixture to set up test environment"""
+    # Clear module cache at start of test session to ensure fresh imports
+    import sys
+    test_modules = [m for m in sys.modules.keys() if m.startswith('agentic_reliability_framework')]
+    for module in test_modules:
+        sys.modules.pop(module, None)
+    
+    yield
+    
+    # Clean up after tests
+    pass
