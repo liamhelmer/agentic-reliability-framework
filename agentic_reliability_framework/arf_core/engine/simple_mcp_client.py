@@ -1,6 +1,8 @@
 """
 Simple OSS MCP Client - No config validation triggers
 Minimal implementation that avoids circular imports
+
+IMPORTANT: Use relative imports within arf_core only
 """
 
 import asyncio
@@ -21,8 +23,12 @@ class OSSMCPClient:
         
     async def execute_tool(self, request_dict: Dict[str, Any]) -> Dict[str, Any]:
         """OSS advisory analysis - never executes"""
-        # Import HealingIntent directly to avoid circular imports
-        from ...arf_core.models.healing_intent import HealingIntent
+        # FIX: Use CORRECT relative import path
+        # This was causing circular imports: from ...arf_core.models.healing_intent import HealingIntent
+        # Should be: from ..models.healing_intent import HealingIntent
+        
+        # CORRECT IMPORT:
+        from ..models.healing_intent import HealingIntent
         
         intent = HealingIntent(
             action=request_dict.get("tool", ""),
