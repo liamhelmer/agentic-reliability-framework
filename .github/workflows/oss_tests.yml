@@ -1,4 +1,4 @@
-# .github/workflows/oss_tests.yml - FIXED VERSION
+# .github/workflows/oss_tests.yml - PROPERLY INDENTED
 name: OSS Boundary Tests
 
 on:
@@ -55,7 +55,7 @@ jobs:
           "agentic_reliability_framework/__init__.py"
           "agentic_reliability_framework/arf_core/__init__.py"
           "agentic_reliability_framework/arf_core/constants.py"
-          "agentic_reliability_framework.arf_core.models.healing_intent.py"
+          "agentic_reliability_framework/arf_core/models/healing_intent.py"
         )
         
         all_files_exist=true
@@ -78,7 +78,7 @@ jobs:
         echo "3. Checking for Enterprise code violations..."
         
         # Create a Python script for smart checking
-        python3 << 'EOF'
+        cat << 'PYTHON_EOF' > /tmp/check_enterprise.py
 import os
 import re
 import sys
@@ -183,7 +183,16 @@ def main():
 
 if __name__ == "__main__":
     main()
-EOF
+PYTHON_EOF
+        
+        python3 /tmp/check_enterprise.py
+        
+        python_exit_code=$?
+        
+        if [ $python_exit_code -ne 0 ]; then
+            echo "❌ Enterprise code violations detected"
+            exit 1
+        fi
         
         # Check 4: Can import basic OSS module
         echo ""
