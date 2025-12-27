@@ -2,19 +2,108 @@
 ARF Core Module - OSS Edition
 Production-grade multi-agent AI for reliability monitoring
 OSS Edition: Advisory mode only, Apache 2.0 Licensed
+
+IMPORTANT: Direct imports only - no lazy loading to avoid circular dependencies
 """
 
-from typing import Any
+# ============================================================================
+# DIRECT IMPORTS - NO LAZY LOADING
+# ============================================================================
 
-# Public API exports
+# Import constants FIRST (they have no dependencies)
+from .constants import (
+    MAX_INCIDENT_HISTORY,
+    MCP_MODES_ALLOWED,
+    EXECUTION_ALLOWED,
+    GRAPH_STORAGE,
+    validate_oss_constants,
+    get_oss_capabilities,
+    OSSBoundaryError,
+)
+
+# Import models SECOND (they only depend on standard library)
+from .models.healing_intent import (
+    HealingIntent,
+    HealingIntentSerializer,
+    create_rollback_intent,
+    create_restart_intent,
+    create_scale_out_intent,
+)
+
+# Import config THIRD (depends on constants)
+from .config.oss_config import (
+    OSSConfig,
+    load_oss_config_from_env,
+)
+
+# ============================================================================
+# DYNAMIC IMPORTS FOR ENGINE MODULES
+# ============================================================================
+
+# We'll handle MCP clients dynamically to avoid circular imports
+_oss_mcp_client_class = None
+
+def _get_oss_mcp_client_class():
+    """Dynamically import OSSMCPClient on first use"""
+    global _oss_mcp_client_class
+    if _oss_mcp_client_class is None:
+        try:
+            # Import when first accessed - breaks circular chain
+            from .engine.simple_mcp_client import OSSMCPClient
+            _oss_mcp_client_class = OSSMCPClient
+        except ImportError as e:
+            print(f"⚠️  Could not import OSSMCPClient: {e}")
+            
+            # Minimal fallback class
+            class MinimalOSSMCPClient:
+                def __init__(self, config=None):
+                    self.mode = "advisory"
+                    self.config = config or {}
+                
+                async def execute_tool(self, request_dict):
+                    from datetime import datetime
+                    
+                    return {
+                        "request_id": request_dict.get("request_id", "oss-request"),
+                        "status": "advisory",
+                        "message": f"Advisory analysis for {request_dict.get('tool', 'unknown')}",
+                        "executed": False,
+                        "result": {
+                            "mode": "advisory",
+                            "requires_enterprise": True,
+                            "upgrade_url": "https://arf.dev/enterprise"
+                        }
+                    }
+                
+                def get_client_stats(self):
+                    return {
+                        "mode": "advisory",
+                        "oss_edition": True,
+                        "can_execute": False,
+                        "can_advise": True,
+                        "enterprise_upgrade_available": True
+                    }
+            
+            _oss_mcp_client_class = MinimalOSSMCPClient
+    
+    return _oss_mcp_client_class
+
+def create_mcp_client(config=None):
+    """Factory function for OSSMCPClient"""
+    OSSMCPClientClass = _get_oss_mcp_client_class()
+    return OSSMCPClientClass(config=config)
+
+# ============================================================================
+# PUBLIC API
+# ============================================================================
+
 __all__ = [
     # OSS Models
     "HealingIntent",
     "HealingIntentSerializer",
-    
-    # OSS Engine
-    "OSSMCPClient",
-    "create_mcp_client",
+    "create_rollback_intent",
+    "create_restart_intent",
+    "create_scale_out_intent",
     
     # OSS Constants
     "MAX_INCIDENT_HISTORY",
@@ -28,139 +117,34 @@ __all__ = [
     # OSS Config
     "OSSConfig",
     "load_oss_config_from_env",
+    
+    # OSS Engine (will be available as properties)
+    "OSSMCPClient",
+    "create_mcp_client",
 ]
 
-# Lazy loading configuration - USE MINIMAL IMPORTS TO AVOID CIRCULAR ISSUES
-_LAZY_IMPORTS = {
-    # Models - import directly to avoid config validation
-    "HealingIntent": ("agentic_reliability_framework.arf_core.models.healing_intent", "HealingIntent"),
-    "HealingIntentSerializer": ("agentic_reliability_framework.arf_core.models.healing_intent", "HealingIntentSerializer"),
-    
-    # Engine - use SIMPLE import to avoid triggering config validation
-    "OSSMCPClient": ("agentic_reliability_framework.arf_core.engine.simple_mcp_client", "OSSMCPClient"),
-    "create_mcp_client": ("agentic_reliability_framework.arf_core.engine.simple_mcp_client", "create_mcp_client"),
-    
-    # Constants - safe to import
-    "MAX_INCIDENT_HISTORY": ("agentic_reliability_framework.arf_core.constants", "MAX_INCIDENT_HISTORY"),
-    "MCP_MODES_ALLOWED": ("agentic_reliability_framework.arf_core.constants", "MCP_MODES_ALLOWED"),
-    "EXECUTION_ALLOWED": ("agentic_reliability_framework.arf_core.constants", "EXECUTION_ALLOWED"),
-    "GRAPH_STORAGE": ("agentic_reliability_framework.arf_core.constants", "GRAPH_STORAGE"),
-    "validate_oss_constants": ("agentic_reliability_framework.arf_core.constants", "validate_oss_constants"),
-    "get_oss_capabilities": ("agentic_reliability_framework.arf_core.constants", "get_oss_capabilities"),
-    "OSSBoundaryError": ("agentic_reliability_framework.arf_core.constants", "OSSBoundaryError"),
-    
-    # Config - safe to import
-    "OSSConfig": ("agentic_reliability_framework.arf_core.config.oss_config", "OSSConfig"),
-    "load_oss_config_from_env": ("agentic_reliability_framework.arf_core.config.oss_config", "load_oss_config_from_env"),
-}
+# ============================================================================
+# PROPERTY-BASED EXPORTS FOR DYNAMIC LOADING
+# ============================================================================
 
+import sys
 
-def __getattr__(name: str) -> Any:
-    """
-    Lazy load modules on demand.
+class _ARFCoreModule(sys.modules[__name__].__class__):
+    """Custom module class with property-based exports"""
     
-    This allows us to import heavy modules only when they're actually used.
-    """
-    if name in _LAZY_IMPORTS:
-        import importlib
-        
-        module_path, attr_name = _LAZY_IMPORTS[name]
-        
-        try:
-            module = importlib.import_module(module_path)
-            return getattr(module, attr_name)
-        except ImportError as e:
-            # Special handling for OSSMCPClient - create minimal version
-            if name in ["OSSMCPClient", "create_mcp_client"]:
-                print(f"⚠️  Creating minimal {name} (original import failed: {e})")
-                return _create_minimal_mcp_client(name)
-            raise AttributeError(
-                f"Module {__name__!r} has no attribute {name!r}. "
-                f"Failed to import from {module_path}: {e}"
-            ) from e
-    
-    raise AttributeError(f"Module {__name__!r} has no attribute {name!r}")
+    @property
+    def OSSMCPClient(self):
+        """Dynamically load OSSMCPClient class on access"""
+        return _get_oss_mcp_client_class()
 
+# Replace module class
+if not isinstance(sys.modules[__name__], _ARFCoreModule):
+    sys.modules[__name__].__class__ = _ARFCoreModule
 
-def _create_minimal_mcp_client(name: str) -> Any:
-    """Create a minimal OSSMCPClient if import fails"""
-    if name == "OSSMCPClient":
-        # Create minimal class that doesn't trigger config validation
-        class MinimalOSSMCPClient:
-            def __init__(self, config=None):
-                self.mode = "advisory"
-                self.config = config or {}
-            
-            async def execute_tool(self, request_dict):
-                from agentic_reliability_framework.arf_core.models.healing_intent import HealingIntent
-                from datetime import datetime
-                
-                intent = HealingIntent(
-                    action=request_dict.get("tool", ""),
-                    component=request_dict.get("component", ""),
-                    parameters=request_dict.get("parameters", {}),
-                    justification=request_dict.get("justification", ""),
-                    confidence=0.85,
-                    incident_id=request_dict.get("metadata", {}).get("incident_id", ""),
-                    detected_at=datetime.now().timestamp()
-                )
-                
-                return {
-                    "request_id": request_dict.get("request_id", "oss-request"),
-                    "status": "completed",
-                    "message": f"Advisory: Would execute {intent.action} on {intent.component}",
-                    "executed": False,
-                    "result": {
-                        "mode": "advisory",
-                        "healing_intent": intent.to_enterprise_request(),
-                        "requires_enterprise": True,
-                        "upgrade_url": "https://arf.dev/enterprise"
-                    }
-                }
-            
-            def get_client_stats(self):
-                return {
-                    "mode": self.mode,
-                    "oss_edition": True,
-                    "can_execute": False,
-                    "can_advise": True,
-                    "registered_tools": 6,
-                    "enterprise_upgrade_available": True
-                }
-        
-        return MinimalOSSMCPClient
-    
-    elif name == "create_mcp_client":
-        def create_minimal_mcp_client(config=None):
-            from agentic_reliability_framework.arf_core import OSSMCPClient
-            return OSSMCPClient(config)
-        return create_minimal_mcp_client
-    
-    return None
+# ============================================================================
+# MODULE METADATA
+# ============================================================================
 
-
-def __dir__() -> list[str]:
-    """
-    Return list of available attributes for tab completion.
-    
-    Combines direct attributes with lazy-loadable names.
-    """
-    import sys
-    
-    # Get current module attributes
-    current_module = sys.modules[__name__]
-    names = set(current_module.__dict__.keys())
-    
-    # Add all lazy-loadable names
-    names.update(_LAZY_IMPORTS.keys())
-    
-    # Filter out private attributes
-    public_names = sorted(name for name in names if not name.startswith("_"))
-    
-    return public_names
-
-
-# Module metadata
 OSS_EDITION = True
 OSS_LICENSE = "Apache 2.0"
 OSS_VERSION = "2.0.2"
