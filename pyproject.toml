@@ -1,18 +1,22 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
-name = "agentic-reliability-enterprise"
-version = "1.0.1"  # Bumped for dependency fix
-description = "Enterprise edition of ARF with autonomous execution, audit trails, and learning"
+name = "agentic-reliability-framework"
+version = "3.3.5"  # Bumped for import fixes
+description = "Agentic Reliability Framework - OSS Edition: AI-powered infrastructure reliability monitoring"
 readme = "README.md"
-license = {text = "Commercial"}
+license = {text = "Apache-2.0"}
 authors = [
-    {name = "Juan Petter", email = "juan@arf.dev"}
+    {name = "Juan Petter", email = "ai@petterjuan.com"}
 ]
-requires-python = ">=3.10"  # CRITICAL: Must match OSS version
+requires-python = ">=3.10"
 classifiers = [
-    "Development Status :: 4 - Beta",
+    "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Developers",
     "Intended Audience :: System Administrators",
-    "License :: Other/Proprietary License",
+    "License :: OSI Approved :: Apache Software License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
@@ -21,26 +25,21 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Topic :: System :: Monitoring",
     "Topic :: System :: Recovery Tools",
+    "Typing :: Typed",
 ]
-
-# ============================================================================
-# CRITICAL FIX: OSS is REQUIRED, not optional!
-# ============================================================================
 dependencies = [
-    "agentic-reliability-framework>=3.3.4,<4.0.0",  # MUST BE REQUIRED!
-    "pyjwt>=2.8.0,<3.0.0",
-    "cryptography>=41.0.0,<42.0.0",
-    "sqlite-utils>=3.35.0,<4.0.0"
+    "gradio>=4.19.0",
+    "pydantic>=2.0.0", 
+    "numpy>=1.24.0",
+    "faiss-cpu>=1.7.0",
+    "requests>=2.31.0",
+    "circuitbreaker>=1.4.0",
+    "atomicwrites>=1.4.0",
+    "pandas>=2.0.0",
+    "httpx>=0.25.0",
 ]
-
-[project.urls]
-Homepage = "https://arf.dev"
-Documentation = "https://docs.arf.dev/enterprise"
-"Purchase License" = "https://arf.dev/pricing"
-Support = "https://support.arf.dev"
 
 [project.optional-dependencies]
-# OSS REMOVED from here - it's now a required dependency above
 dev = [
     "pytest>=7.0.0",
     "pytest-asyncio>=0.21.0",
@@ -48,17 +47,11 @@ dev = [
     "mypy>=1.0.0",
     "ruff>=0.1.0",
     "black>=23.0.0",
+    "types-requests",
+    "types-PyYAML",
 ]
 
-postgres = [
-    "psycopg2-binary",
-    "pgvector"
-]
-
-neo4j = [
-    "neo4j>=5.0.0,<6.0.0"
-]
-
-[build-system]
-requires = ["setuptools>=61.0", "wheel"]
-build-backend = "setuptools.build_meta"
+[project.urls]
+Homepage = "https://github.com/petterjuan/agentic-reliability-framework"
+Documentation = "https://docs.arf.dev"
+Enterprise = "https://arf.dev/enterprise"
