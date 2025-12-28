@@ -6,7 +6,7 @@ OSS Edition: Advisory mode only, Apache 2.0 Licensed
 IMPORTANT: This module ONLY exports OSS components - no circular imports
 """
 
-__version__ = "3.3.4"
+__version__ = "3.3.5"  # Updated to match package version
 __all__ = [
     "HealingIntent",
     "HealingIntentSerializer",
@@ -44,24 +44,72 @@ from agentic_reliability_framework.arf_core.constants import (
 )
 
 # Lazy load OSSMCPClient to avoid circular dependencies
-_oss_mcp_client = None
+_oss_mcp_client_class = None
+
+def _get_oss_mcp_client_class():
+    """Dynamically import OSSMCPClient on first use with proper fallback"""
+    global _oss_mcp_client_class
+    if _oss_mcp_client_class is not None:
+        return _oss_mcp_client_class
+    
+    try:
+        # Try simple_mcp_client first (avoids circular imports)
+        from agentic_reliability_framework.arf_core.engine.simple_mcp_client import OSSMCPClient
+        _oss_mcp_client_class = OSSMCPClient
+    except ImportError as e1:
+        try:
+            # Fall back to full oss_mcp_client
+            from agentic_reliability_framework.arf_core.engine.oss_mcp_client import OSSMCPClient
+            _oss_mcp_client_class = OSSMCPClient
+        except ImportError as e2:
+            # Create minimal fallback class (instead of None)
+            class MinimalOSSMCPClient:
+                def __init__(self, config=None):
+                    self.mode = "advisory"
+                    self.config = config or {}
+                
+                async def execute_tool(self, request_dict):
+                    return {
+                        "request_id": request_dict.get("request_id", "oss-request"),
+                        "status": "advisory",
+                        "message": f"Advisory analysis for {request_dict.get('tool', 'unknown')}",
+                        "executed": False,
+                        "result": {
+                            "mode": "advisory",
+                            "requires_enterprise": True,
+                            "upgrade_url": "https://arf.dev/enterprise"
+                        }
+                    }
+                
+                def get_client_stats(self):
+                    return {
+                        "mode": "advisory",
+                        "oss_edition": True,
+                        "can_execute": False,
+                        "can_advise": True,
+                        "enterprise_upgrade_available": True
+                    }
+            
+            _oss_mcp_client_class = MinimalOSSMCPClient
+    
+    return _oss_mcp_client_class
 
 def __getattr__(name):
     """Lazy loading for OSSMCPClient"""
     if name == "OSSMCPClient":
-        from agentic_reliability_framework.arf_core.engine.simple_mcp_client import OSSMCPClient
-        return OSSMCPClient
+        return _get_oss_mcp_client_class()
     raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
 
 def create_mcp_client(config=None):
     """Factory function for OSSMCPClient"""
-    from agentic_reliability_framework.arf_core.engine.simple_mcp_client import OSSMCPClient
-    return OSSMCPClient(config=config)
+    OSSMCPClientClass = _get_oss_mcp_client_class()
+    return OSSMCPClientClass(config=config)
 
-# Export OSSMCPClient for static analysis
+# Export OSSMCPClient for static analysis (with fallback)
 try:
-    from agentic_reliability_framework.arf_core.engine.simple_mcp_client import OSSMCPClient
-except ImportError:
+    OSSMCPClient = _get_oss_mcp_client_class()
+except Exception:
+    # This should never happen due to the fallback above
     OSSMCPClient = None
 
 # ============================================================================
