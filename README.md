@@ -23,7 +23,7 @@
 
 ---
 
-# Agentic Reliability Framework (ARF) v3.3.4 — Stable
+# Agentic Reliability Framework (ARF) v3.3.5 — Stable
 
 ## Executive Summary
 
@@ -39,7 +39,7 @@ This is **operational intelligence**.
 
 A dual-architecture reliability framework where **OSS analyzes and creates intent**, and **Enterprise safely executes intent**.
 
-This repository contains the **Apache 2.0 OSS edition (v3.3.4 Stable)**. Enterprise components are distributed separately under a commercial license.
+This repository contains the **Apache 2.0 OSS edition (v3.3.5 Stable)**. Enterprise components are distributed separately under a commercial license.
 
 ---
 
@@ -776,7 +776,7 @@ export BUSINESS_HOURS_END=17:00
 ### OSS (≈5 minutes)
 
 ```bash
-pip install agentic-reliability-framework==3.3.4
+pip install agentic-reliability-framework==3.3.5
 ```
 
 Runs:
@@ -820,7 +820,7 @@ If you use the Agentic Reliability Framework in production or research, please c
   title = {Agentic Reliability Framework: Production-Grade Multi-Agent AI for Autonomous System Reliability},
   author = {Juan Petter and Contributors},
   year = {2025},
-  version = {3.3.4},
+  version = {3.3.5},
   url = {https://github.com/petterjuan/agentic-reliability-framework}
 }
 ```
