@@ -241,33 +241,6 @@ _**💰 ROI Measurement**_ 
 
 _ARF provides the intelligence of AI agents with the reliability of traditional automation, creating a new category of "Reliable AI Systems."_
 
-
-## 🆓 OSS Edition (Apache 2.0)
-
-| Feature | Implementation | Limits |
-|------|--------------|-------|
-| MCP Mode | Advisory only (`OSSMCPClient`) | No execution |
-| RAG Memory | In-memory graph + FAISS | 1000 incidents (LRU) |
-| Similarity Search | FAISS cosine similarity | Top-K only |
-| Learning | Pattern stats only | No persistence |
-| Healing | `HealingIntent` creation | Advisory only |
-| Policies | Deterministic guardrails | Warnings + blocks |
-| Storage | RAM only | Process-lifetime |
-| Support | GitHub Issues | No SLA |
-
----
-
-## 💰 Enterprise Edition (Commercial)
-
-| Feature | Implementation | Value |
-|------|---------------|------|
-| MCP Modes | Advisory / Approval / Autonomous | Controlled execution |
-| Storage | Neo4j + FAISS (hybrid) | Persistent, unlimited |
-| Dashboard | React + FastAPI | Live system view |
-| Analytics | Graph Neural Networks | Predictive MTTR |
-| Compliance | SOC2 / GDPR / HIPAA | Full audit trails |
-| Pricing | $0.10 / incident + $499 / month | Usage-based |
-
 ---
 
 ## Conceptual Architecture (Mental Model)
