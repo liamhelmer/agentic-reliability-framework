@@ -1,5 +1,6 @@
 """
-Enhanced V3 Reliability Engine with RAG Graph and MCP Server integration.
+Enhanced V3 Reliability Engine with RAG Graph Memory and MCP Server integration.
+Production-ready with safety features, proper type hints, caching, and atomic updates.
 Extends the base V3ReliabilityEngine with full v3 features.
 """
 
@@ -9,17 +10,19 @@ import asyncio
 import logging
 import threading
 import time
-from contextlib import asynccontextmanager
-from dataclasses import dataclass, field
-from typing import Dict, Any, List, Optional, Union, cast, TYPE_CHECKING
-
 import numpy as np
+import hashlib
+from contextlib import asynccontextmanager, contextmanager
+from dataclasses import dataclass, field, asdict
+from datetime import datetime, timedelta
+from typing import Dict, Any, List, Optional, Union, cast, TypedDict, TYPE_CHECKING
+from collections import OrderedDict
 
-# Local imports with conditional typing
+# Conditional imports to avoid circular dependencies
 if TYPE_CHECKING:
+    from ..models import ReliabilityEvent
     from ..memory.rag_graph import RAGGraphMemory
     from ..engine.mcp_server import MCPServer
-    from ..models import ReliabilityEvent
 else:
     # Runtime imports will be done lazily
     pass
@@ -30,9 +33,455 @@ from .reliability import V3ReliabilityEngine as BaseV3Engine, MCPResponse as Bas
 
 logger = logging.getLogger(__name__)
 
-# Constants
-DEFAULT_LEARNING_MIN_DATA_POINTS = 5
+# ============================================================================
+# TYPE DEFINITIONS
+# ============================================================================
 
+class EffectivenessStats(TypedDict):
+    """Historical effectiveness statistics for actions"""
+    action: str
+    total_uses: int
+    successful_uses: int
+    success_rate: float
+    avg_resolution_time_minutes: float
+    resolution_time_std: float
+    component_filter: Optional[str]
+    data_points: int
+
+
+class GraphStats(TypedDict):
+    """RAG Graph memory statistics"""
+    incident_nodes: int
+    outcome_nodes: int
+    edges: int
+    similarity_cache_size: int
+    embedding_cache_size: int
+    cache_hit_rate: float
+    incidents_with_outcomes: int
+    avg_outcomes_per_incident: float
+    component_distribution: Dict[str, int]
+    stats: Dict[str, Any]
+    memory_limits: Dict[str, Any]
+    v3_enabled: bool
+    is_operational: bool
+    circuit_breaker: Dict[str, Any]
+
+
+# ============================================================================
+# ENHANCED RAG GRAPH MEMORY
+# ============================================================================
+
+class EnhancedRAGGraphMemory:
+    """
+    Enhanced RAG Graph Memory with caching and atomic updates
+    Integrated directly to avoid circular imports
+    """
+    
+    def __init__(self, faiss_index):
+        """
+        Initialize enhanced RAG graph memory
+        
+        Args:
+            faiss_index: FAISS index for vector similarity search
+        """
+        self.faiss = faiss_index
+        self.incident_nodes: Dict[str, Any] = {}
+        self.outcome_nodes: Dict[str, Any] = {}
+        self.edges: List[Any] = []
+        self._lock = threading.RLock()
+        self._stats: Dict[str, Any] = {
+            "total_incidents_stored": 0,
+            "total_outcomes_stored": 0,
+            "total_edges_created": 0,
+            "similarity_searches": 0,
+            "cache_hits": 0,
+            "failed_searches": 0,
+            "last_search_time": None,
+            "last_store_time": None,
+        }
+        self._rag_failures = 0
+        self._rag_disabled_until = 0.0
+        self._rag_last_failure_time = 0.0
+        self._similarity_cache: OrderedDict[str, List[Any]] = OrderedDict()
+        self._max_cache_size = 1000  # Default cache size
+        self._embedding_cache: Dict[str, np.ndarray] = {}
+        self._max_embedding_cache_size = 100
+        self._faiss_to_incident: Dict[int, str] = {}
+        
+        # Memory constants
+        self.MAX_INCIDENT_NODES = 1000
+        self.VECTOR_DIM = 128
+        self.GRAPH_CACHE_SIZE = 1000
+        
+        logger.info(f"Initialized EnhancedRAGGraphMemory with cache size {self._max_cache_size}")
+    
+    @contextmanager
+    def _transaction(self):
+        """Thread-safe transaction context manager"""
+        with self._lock:
+            yield
+    
+    def is_enabled(self) -> bool:
+        """Check if RAG memory is enabled and operational"""
+        return getattr(config, 'rag_enabled', False) and (len(self.incident_nodes) > 0 or self.faiss.get_count() > 0)
+    
+    def _generate_incident_id(self, event: Any) -> str:
+        """Generate unique incident ID from event fingerprint"""
+        # Lazy import to avoid circular dependency
+        if hasattr(event, 'component'):
+            component = event.component
+        else:
+            component = "unknown"
+        
+        if hasattr(event, 'latency_p99'):
+            latency = event.latency_p99
+        else:
+            latency = 0.0
+        
+        fingerprint_data = f"{component}:{latency:.2f}"
+        fingerprint = hashlib.sha256(fingerprint_data.encode()).hexdigest()
+        return f"inc_{fingerprint[:16]}"
+    
+    def _embed_incident(self, event: Any, analysis: Dict[str, Any]) -> np.ndarray:
+        """Create embedding vector from incident data"""
+        cache_key = f"{hash(str(event))}:{hash(str(analysis))}"
+        
+        with self._transaction():
+            if cache_key in self._embedding_cache:
+                return self._embedding_cache[cache_key]
+        
+        try:
+            # Extract features
+            features: List[float] = []
+            
+            # Add numerical features
+            if hasattr(event, 'latency_p99'):
+                features.append(float(event.latency_p99) / 1000.0)
+            else:
+                features.append(0.0)
+            
+            if hasattr(event, 'error_rate'):
+                features.append(float(event.error_rate))
+            else:
+                features.append(0.0)
+            
+            if hasattr(event, 'throughput'):
+                features.append(float(event.throughput) / 10000.0)
+            else:
+                features.append(0.0)
+            
+            if hasattr(event, 'cpu_util'):
+                features.append(float(event.cpu_util) if event.cpu_util is not None else 0.0)
+            else:
+                features.append(0.0)
+            
+            # Add categorical features as embeddings
+            if hasattr(event, 'severity'):
+                severity_value = getattr(event.severity, 'value', "low")
+                severity_map = {"low": 0.1, "medium": 0.3, "high": 0.7, "critical": 1.0}
+                features.append(severity_map.get(severity_value, 0.1))
+            else:
+                features.append(0.1)
+            
+            if hasattr(event, 'component'):
+                component_hash = int(hashlib.md5(event.component.encode()).hexdigest()[:8], 16) / 2**32
+                features.append(component_hash)
+            else:
+                features.append(0.0)
+            
+            # Add analysis confidence
+            confidence = analysis.get("incident_summary", {}).get("anomaly_confidence", 0.5)
+            features.append(float(confidence))
+            
+            # Pad or truncate to target dimension
+            target_dim = self.VECTOR_DIM
+            if len(features) < target_dim:
+                features.extend([0.0] * (target_dim - len(features)))
+            else:
+                features = features[:target_dim]
+            
+            embedding = np.array(features, dtype=np.float32)
+            norm = np.linalg.norm(embedding)
+            if norm > 0:
+                embedding = embedding / norm
+            
+            # Cache embedding
+            with self._transaction():
+                self._embedding_cache[cache_key] = embedding
+                if len(self._embedding_cache) > self._max_embedding_cache_size:
+                    oldest_key = next(iter(self._embedding_cache))
+                    del self._embedding_cache[oldest_key]
+            
+            return embedding
+            
+        except Exception as e:
+            logger.error(f"Embedding error: {e}", exc_info=True)
+            return np.zeros(self.VECTOR_DIM, dtype=np.float32)
+    
+    def store_incident(self, event: Any, analysis: Dict[str, Any]) -> str:
+        """Store incident in RAG graph memory"""
+        if not getattr(config, 'rag_enabled', False):
+            return ""
+        
+        incident_id = self._generate_incident_id(event)
+        
+        # Check if already exists
+        with self._transaction():
+            if incident_id in self.incident_nodes:
+                node = self.incident_nodes[incident_id]
+                node["agent_analysis"] = analysis
+                node["metadata"]["last_updated"] = datetime.now().isoformat()
+                return incident_id
+        
+        # Create embedding and store
+        embedding = self._embed_incident(event, analysis)
+        faiss_index_id: Optional[int] = None
+        
+        try:
+            # Store in FAISS
+            text_description = f"{getattr(event, 'component', 'unknown')} {getattr(event, 'latency_p99', 0):.1f}"
+            if hasattr(self.faiss, "add_text"):
+                faiss_index_id = self.faiss.add_text(text_description, embedding.tolist())
+            elif hasattr(self.faiss, "add_async"):
+                faiss_index_id = self.faiss.add_async(embedding.reshape(1, -1))
+            else:
+                faiss_index_id = len(self.incident_nodes)
+            
+            if faiss_index_id is not None:
+                with self._transaction():
+                    self._faiss_to_incident[faiss_index_id] = incident_id
+                    
+        except Exception as e:
+            logger.error(f"FAISS store error: {e}", exc_info=True)
+            faiss_index_id = len(self.incident_nodes)
+        
+        # Create incident node
+        node = {
+            "incident_id": incident_id,
+            "component": getattr(event, 'component', 'unknown'),
+            "severity": getattr(getattr(event, 'severity', 'low'), 'value', 'low'),
+            "timestamp": getattr(getattr(event, 'timestamp', datetime.now()), "isoformat", lambda: datetime.now().isoformat())(),
+            "metrics": {
+                "latency_ms": getattr(event, 'latency_p99', 0.0),
+                "error_rate": getattr(event, 'error_rate', 0.0),
+                "throughput": getattr(event, 'throughput', 0.0),
+                "cpu_util": float(getattr(event, 'cpu_util', 0.0)),
+                "memory_util": float(getattr(event, 'memory_util', 0.0)),
+            },
+            "agent_analysis": analysis,
+            "embedding_id": faiss_index_id,
+            "faiss_index": faiss_index_id,
+            "metadata": {
+                "revenue_impact": getattr(event, "revenue_impact", 0.0),
+                "user_impact": getattr(event, "user_impact", 0.0),
+                "upstream_deps": getattr(event, "upstream_deps", []),
+                "downstream_deps": getattr(event, "downstream_deps", []),
+                "service_mesh": getattr(event, "service_mesh", ""),
+                "fingerprint": getattr(event, "fingerprint", ""),
+                "created_at": datetime.now().isoformat(),
+                "embedding_dim": self.VECTOR_DIM
+            }
+        }
+        
+        # Store with capacity management
+        with self._transaction():
+            self.incident_nodes[incident_id] = node
+            self._stats["total_incidents_stored"] += 1
+            self._stats["last_store_time"] = datetime.now().isoformat()
+            
+            # Evict oldest if capacity exceeded
+            if len(self.incident_nodes) > self.MAX_INCIDENT_NODES:
+                oldest_id = min(self.incident_nodes.keys(), 
+                               key=lambda x: self.incident_nodes[x].get("metadata", {}).get("created_at", ""))
+                oldest_node = self.incident_nodes.pop(oldest_id)
+                if oldest_node.get("faiss_index") is not None:
+                    self._faiss_to_incident.pop(oldest_node["faiss_index"], None)
+                logger.debug(f"Evicted oldest incident {oldest_id}")
+        
+        logger.info(f"Stored incident {incident_id}: {node['component']}")
+        return incident_id
+    
+    def find_similar(self, event: Any, analysis: Dict[str, Any], k: int = 3) -> List[Dict[str, Any]]:
+        """Find similar historical incidents"""
+        if not self.is_enabled():
+            return []
+        
+        try:
+            # Create embedding for search
+            embedding = self._embed_incident(event, analysis)
+            key = hashlib.sha256(embedding.tobytes()).hexdigest()
+            
+            # Check cache
+            with self._transaction():
+                if key in self._similarity_cache:
+                    self._stats["cache_hits"] += 1
+                    return self._similarity_cache[key]
+            
+            # Perform FAISS search
+            self._stats["similarity_searches"] += 1
+            results: List[Dict[str, Any]] = []
+            
+            try:
+                if hasattr(self.faiss, "query"):
+                    search_results = self.faiss.query(embedding.reshape(1, -1), top_k=k)
+                    for idx, score in search_results:
+                        incident_id = self._faiss_to_incident.get(idx, "")
+                        if incident_id and incident_id in self.incident_nodes:
+                            incident = self.incident_nodes[incident_id]
+                            results.append({
+                                **incident,
+                                "similarity_score": float(score)
+                            })
+            except Exception as e:
+                logger.error(f"FAISS search error: {e}", exc_info=True)
+            
+            # Cache results
+            with self._transaction():
+                self._similarity_cache[key] = results
+                if len(self._similarity_cache) > self._max_cache_size:
+                    self._similarity_cache.popitem(last=False)
+            
+            return results
+            
+        except Exception as e:
+            logger.error(f"Find similar error: {e}", exc_info=True)
+            return []
+    
+    def store_outcome(self, incident_id: str, actions_taken: List[str], success: bool, 
+                     resolution_time_minutes: Optional[float] = None, 
+                     lessons_learned: Optional[List[str]] = None) -> str:
+        """Store outcome for learning"""
+        if incident_id not in self.incident_nodes:
+            logger.warning(f"Cannot store outcome: Incident {incident_id} not found")
+            return ""
+        
+        actions_hash = hashlib.sha256(",".join(actions_taken).encode()).hexdigest()
+        outcome_id = f"out_{hashlib.sha256(f'{incident_id}:{actions_hash}'.encode()).hexdigest()[:16]}"
+        
+        outcome = {
+            "outcome_id": outcome_id,
+            "incident_id": incident_id,
+            "actions_taken": actions_taken,
+            "success": success,
+            "resolution_time_minutes": resolution_time_minutes,
+            "created_at": datetime.now().isoformat(),
+            "lessons_learned": lessons_learned or []
+        }
+        
+        with self._transaction():
+            self.outcome_nodes[outcome_id] = outcome
+            self._stats["total_outcomes_stored"] += 1
+            
+            # Create edge
+            edge = {
+                "edge_id": f"edge_{hashlib.sha256(f'{incident_id}:{outcome_id}'.encode()).hexdigest()[:16]}",
+                "source_id": incident_id,
+                "target_id": outcome_id,
+                "edge_type": "RESOLVES",
+                "metadata": {"created_at": datetime.now().isoformat()}
+            }
+            self.edges.append(edge)
+            self._stats["total_edges_created"] += 1
+        
+        return outcome_id
+    
+    def get_historical_effectiveness(self, action: str, component_filter: Optional[str] = None) -> EffectivenessStats:
+        """Get effectiveness statistics for an action"""
+        relevant_outcomes = []
+        
+        for outcome in self.outcome_nodes.values():
+            if action in outcome.get("actions_taken", []):
+                incident = self.incident_nodes.get(outcome["incident_id"])
+                if incident and (component_filter is None or incident["component"] == component_filter):
+                    relevant_outcomes.append(outcome)
+        
+        total_uses = len(relevant_outcomes)
+        successful_uses = sum(1 for o in relevant_outcomes if o.get("success", False))
+        resolution_times = [o.get("resolution_time_minutes", 0.0) for o in relevant_outcomes]
+        
+        avg_resolution = np.mean(resolution_times) if resolution_times else 0.0
+        std_resolution = np.std(resolution_times) if resolution_times else 0.0
+        success_rate = successful_uses / total_uses if total_uses > 0 else 0.0
+        
+        return {
+            "action": action,
+            "total_uses": total_uses,
+            "successful_uses": successful_uses,
+            "success_rate": success_rate,
+            "avg_resolution_time_minutes": avg_resolution,
+            "resolution_time_std": std_resolution,
+            "component_filter": component_filter,
+            "data_points": total_uses
+        }
+    
+    def get_most_effective_actions(self, component: str, k: int = 3) -> List[Dict[str, Any]]:
+        """Get most effective actions for a component"""
+        component_actions: Dict[str, Dict[str, Any]] = {}
+        
+        for outcome in self.outcome_nodes.values():
+            incident = self.incident_nodes.get(outcome["incident_id"])
+            if incident and incident["component"] == component:
+                for action in outcome.get("actions_taken", []):
+                    if action not in component_actions:
+                        component_actions[action] = {"uses": 0, "successes": 0}
+                    component_actions[action]["uses"] += 1
+                    if outcome.get("success", False):
+                        component_actions[action]["successes"] += 1
+        
+        # Calculate success rates
+        results = []
+        for action, stats in component_actions.items():
+            success_rate = stats["successes"] / stats["uses"] if stats["uses"] > 0 else 0.0
+            results.append({
+                "action": action,
+                "success_rate": success_rate,
+                "total_uses": stats["uses"],
+                "successful_uses": stats["successes"]
+            })
+        
+        # Sort by success rate
+        results.sort(key=lambda x: x["success_rate"], reverse=True)
+        return results[:k]
+    
+    def get_graph_stats(self) -> GraphStats:
+        """Get comprehensive graph statistics"""
+        component_distribution: Dict[str, int] = {}
+        for inc in self.incident_nodes.values():
+            comp = inc.get("component", "unknown")
+            component_distribution[comp] = component_distribution.get(comp, 0) + 1
+        
+        incidents_with_outcomes = len({o["incident_id"] for o in self.outcome_nodes.values()})
+        avg_outcomes_per_incident = len(self.outcome_nodes) / len(self.incident_nodes) if self.incident_nodes else 0.0
+        cache_hit_rate = self._stats["cache_hits"] / self._stats["similarity_searches"] if self._stats["similarity_searches"] > 0 else 0.0
+        
+        return {
+            "incident_nodes": len(self.incident_nodes),
+            "outcome_nodes": len(self.outcome_nodes),
+            "edges": len(self.edges),
+            "similarity_cache_size": len(self._similarity_cache),
+            "embedding_cache_size": len(self._embedding_cache),
+            "cache_hit_rate": cache_hit_rate,
+            "incidents_with_outcomes": incidents_with_outcomes,
+            "avg_outcomes_per_incident": avg_outcomes_per_incident,
+            "component_distribution": component_distribution,
+            "stats": self._stats.copy(),
+            "memory_limits": {
+                "max_incidents": self.MAX_INCIDENT_NODES,
+                "max_cache_size": self._max_cache_size,
+                "max_embedding_cache": self._max_embedding_cache_size
+            },
+            "v3_enabled": True,
+            "is_operational": self.is_enabled(),
+            "circuit_breaker": {
+                "rag_failures": self._rag_failures,
+                "disabled_until": self._rag_disabled_until
+            }
+        }
+
+
+# ============================================================================
+# ENHANCED MCP RESPONSE
+# ============================================================================
 
 @dataclass
 class MCPResponse(BaseMCPResponse):
@@ -50,6 +499,10 @@ class MCPResponse(BaseMCPResponse):
         return base_dict
 
 
+# ============================================================================
+# ENHANCED V3 RELIABILITY ENGINE
+# ============================================================================
+
 class V3ReliabilityEngine(BaseV3Engine):
     """
     Enhanced reliability engine with RAG Graph memory and MCP execution boundary.
@@ -63,8 +516,8 @@ class V3ReliabilityEngine(BaseV3Engine):
     
     def __init__(
         self,
-        rag_graph: Optional[RAGGraphMemory] = None,
-        mcp_server: Optional[MCPServer] = None,
+        faiss_index = None,
+        mcp_server = None,
         *args: Any,
         **kwargs: Any
     ) -> None:
@@ -72,13 +525,21 @@ class V3ReliabilityEngine(BaseV3Engine):
         Initialize enhanced V3 engine with RAG and MCP dependencies.
         
         Args:
-            rag_graph: RAG graph for historical context
+            faiss_index: FAISS index for vector similarity
             mcp_server: MCP server for execution boundary
             *args: Additional args passed to base class
             **kwargs: Additional kwargs passed to base class
         """
-        # Pass RAG and MCP to base class via kwargs
-        kwargs['rag_graph'] = rag_graph
+        # Initialize RAG memory if FAISS index provided
+        self.rag = None
+        if faiss_index:
+            self.rag = EnhancedRAGGraphMemory(faiss_index)
+        
+        # Store MCP server
+        self.mcp = mcp_server
+        
+        # Pass to base class
+        kwargs['rag_graph'] = self.rag
         kwargs['mcp_server'] = mcp_server
         super().__init__(*args, **kwargs)
         
@@ -105,7 +566,7 @@ class V3ReliabilityEngine(BaseV3Engine):
         
         logger.info(
             f"Initialized Enhanced V3ReliabilityEngine with RAG and MCP "
-            f"(RAG={rag_graph is not None}, MCP={mcp_server is not None})"
+            f"(RAG={self.rag is not None}, MCP={mcp_server is not None})"
         )
     
     @property
@@ -134,14 +595,28 @@ class V3ReliabilityEngine(BaseV3Engine):
         
         Extends the base implementation with v3 features.
         """
+        # Get event from args or kwargs
         event = kwargs.get("event") or (args[0] if args else None)
-        if not event or not isinstance(event, ReliabilityEvent):
-            return {
-                "status": "ERROR",
-                "incident_id": "",
-                "error": "Invalid event",
-                "healing_actions": []
-            }
+        
+        # Import ReliabilityEvent lazily to avoid circular import
+        try:
+            from ..models import ReliabilityEvent
+            if not event or not isinstance(event, ReliabilityEvent):
+                return {
+                    "status": "ERROR",
+                    "incident_id": "",
+                    "error": "Invalid event",
+                    "healing_actions": []
+                }
+        except ImportError:
+            # Fallback if ReliabilityEvent not available
+            if not event or not hasattr(event, 'component'):
+                return {
+                    "status": "ERROR",
+                    "incident_id": "",
+                    "error": "Invalid event or missing ReliabilityEvent import",
+                    "healing_actions": []
+                }
         
         # Start timing
         start_time = time.time()
@@ -156,12 +631,15 @@ class V3ReliabilityEngine(BaseV3Engine):
             
             # Step 2: RAG RETRIEVAL (v3 enhancement)
             rag_context: Dict[str, Any] = {}
-            similar_incidents: List[Any] = []
+            similar_incidents: List[Dict[str, Any]] = []
             
             if self.v3_enabled and self.rag:
                 try:
+                    # Get analysis from base result
+                    analysis = base_result.get("analysis", {})
+                    
                     # Use RAG to find similar historical incidents
-                    similar_incidents = self.rag.find_similar(event, k=3)
+                    similar_incidents = self.rag.find_similar(event, analysis, k=3)
                     
                     with self._v3_lock:
                         self.v3_metrics["rag_queries"] += 1
@@ -230,7 +708,7 @@ class V3ReliabilityEngine(BaseV3Engine):
                                 outcome = await self._record_outcome(
                                     incident_id=base_result["incident_id"],
                                     action=action,
-                                    mcp_response=mcp_response.to_dict(),  # Pass as dict
+                                    mcp_response=mcp_response.to_dict(),
                                     event=event,
                                     similar_incidents=similar_incidents
                                 )
@@ -301,7 +779,7 @@ class V3ReliabilityEngine(BaseV3Engine):
             except Exception as base_error:
                 return {
                     "status": "ERROR",
-                    "incident_id": f"error_{int(time.time())}_{event.component if event else 'unknown'}",
+                    "incident_id": f"error_{int(time.time())}_{event.component if hasattr(event, 'component') else 'unknown'}",
                     "error": f"v3: {e}, base fallback: {base_error}",
                     "v3_processing": "failed",
                     "processing_time_ms": (time.time() - start_time) * 1000,
@@ -309,73 +787,62 @@ class V3ReliabilityEngine(BaseV3Engine):
     
     def _build_rag_context(
         self, 
-        similar_incidents: List[Any], 
-        current_event: ReliabilityEvent
+        similar_incidents: List[Dict[str, Any]], 
+        current_event: Any
     ) -> Dict[str, Any]:
         """Build RAG context from similar incidents"""
         if not similar_incidents:
             return {}
         
-        context: Dict[str, Any] = {
-            "similar_incidents_count": len(similar_incidents),
-            "avg_similarity": self._calculate_avg_similarity(similar_incidents),
-            "success_rate": self._calculate_success_rate(similar_incidents),
-            "component_match": all(
-                hasattr(incident, 'component') and incident.component == current_event.component 
-                for incident in similar_incidents
-            ),
-        }
+        # Calculate average similarity
+        similarity_scores = [inc.get("similarity_score", 0.0) for inc in similar_incidents]
+        avg_similarity = np.mean(similarity_scores) if similarity_scores else 0.0
         
-        # Get most effective action if RAG supports it
-        if self.rag and hasattr(self.rag, 'get_most_effective_actions'):
-            try:
-                effective_actions = self.rag.get_most_effective_actions(
-                    current_event.component, k=1
-                )
-                if effective_actions:
-                    context["most_effective_action"] = effective_actions[0]
-            except Exception as e:
-                logger.debug(f"Error getting most effective actions: {e}")
-        
-        return context
-    
-    def _calculate_avg_similarity(self, similar_incidents: List[Any]) -> float:
-        """Calculate average similarity score from similar incidents"""
-        if not similar_incidents:
-            return 0.0
-        
-        scores = []
-        for incident in similar_incidents:
-            if hasattr(incident, 'metadata'):
-                score = incident.metadata.get("similarity_score")
-                if score is not None:
-                    scores.append(float(score))
-        
-        return float(np.mean(scores)) if scores else 0.0
-    
-    def _calculate_success_rate(self, similar_incidents: List[Any]) -> float:
-        """Calculate success rate from similar incidents"""
-        if not similar_incidents:
-            return 0.0
-        
+        # Calculate success rate
         successful_outcomes = 0
         total_outcomes = 0
         
         for incident in similar_incidents:
-            if hasattr(incident, 'outcomes') and incident.outcomes:
-                total_outcomes += len(incident.outcomes)
-                successful_outcomes += sum(
-                    1 for o in incident.outcomes 
-                    if hasattr(o, 'success') and o.success
-                )
+            # Check if incident has outcomes
+            incident_id = incident.get("incident_id")
+            if incident_id:
+                # Count outcomes for this incident
+                incident_outcomes = [
+                    o for o in self.rag.outcome_nodes.values() 
+                    if o["incident_id"] == incident_id
+                ]
+                total_outcomes += len(incident_outcomes)
+                successful_outcomes += sum(1 for o in incident_outcomes if o.get("success", False))
         
-        return float(successful_outcomes) / total_outcomes if total_outcomes > 0 else 0.0
+        success_rate = float(successful_outcomes) / total_outcomes if total_outcomes > 0 else 0.0
+        
+        # Get most effective action if available
+        most_effective_action = None
+        if hasattr(current_event, 'component'):
+            effective_actions = self.rag.get_most_effective_actions(current_event.component, k=1)
+            if effective_actions:
+                most_effective_action = effective_actions[0]
+        
+        context: Dict[str, Any] = {
+            "similar_incidents_count": len(similar_incidents),
+            "avg_similarity": avg_similarity,
+            "success_rate": success_rate,
+            "component_match": all(
+                inc.get("component") == getattr(current_event, 'component', 'unknown')
+                for inc in similar_incidents
+            ),
+        }
+        
+        if most_effective_action:
+            context["most_effective_action"] = most_effective_action
+        
+        return context
     
     def _enhance_actions_with_context(
         self, 
         base_actions: List[Dict[str, Any]],
-        similar_incidents: List[Any],
-        event: ReliabilityEvent,
+        similar_incidents: List[Dict[str, Any]],
+        event: Any,
         rag_context: Dict[str, Any]
     ) -> List[Dict[str, Any]]:
         """Enhance healing actions with historical context"""
@@ -413,14 +880,14 @@ class V3ReliabilityEngine(BaseV3Engine):
     def _create_mcp_request(
         self, 
         action: Dict[str, Any],
-        event: ReliabilityEvent,
-        historical_context: List[Any],
+        event: Any,
+        historical_context: List[Dict[str, Any]],
         rag_context: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """Create MCP request from enhanced action"""
         # Build justification with historical context
         justification_parts = [
-            f"Event: {event.component} with {event.latency_p99:.0f}ms latency, {event.error_rate*100:.1f}% errors",
+            f"Event: {getattr(event, 'component', 'unknown')} with {getattr(event, 'latency_p99', 0):.0f}ms latency, {getattr(event, 'error_rate', 0)*100:.1f}% errors",
         ]
         
         if historical_context:
@@ -438,12 +905,12 @@ class V3ReliabilityEngine(BaseV3Engine):
         
         return {
             "tool": action.get("action", "unknown"),
-            "component": event.component,
+            "component": getattr(event, 'component', 'unknown'),
             "parameters": action.get("parameters", {}),
             "justification": justification,
             "metadata": {
                 "event_fingerprint": getattr(event, 'fingerprint', ''),
-                "event_severity": event.severity.value if hasattr(event.severity, 'value') else "unknown",
+                "event_severity": getattr(getattr(event, 'severity', 'low'), 'value', 'low'),
                 "similar_incidents_count": len(historical_context),
                 "historical_confidence": rag_context.get("avg_similarity", 0.0) if rag_context else 0.0,
                 "rag_context": rag_context,
@@ -456,8 +923,8 @@ class V3ReliabilityEngine(BaseV3Engine):
         incident_id: str, 
         action: Dict[str, Any],
         mcp_response: Dict[str, Any],
-        event: Optional[ReliabilityEvent] = None,
-        similar_incidents: Optional[List[Any]] = None
+        event: Optional[Any] = None,
+        similar_incidents: Optional[List[Dict[str, Any]]] = None
     ) -> Dict[str, Any]:
         """Record outcome for learning loop"""
         if not self.rag:
@@ -522,7 +989,7 @@ class V3ReliabilityEngine(BaseV3Engine):
                 self.learning_state["failed_predictions"]
             )
             
-            learning_min_data_points = getattr(config, 'learning_min_data_points', DEFAULT_LEARNING_MIN_DATA_POINTS)
+            learning_min_data_points = getattr(config, 'learning_min_data_points', 5)
             if total_predictions % learning_min_data_points == 0:
                 self._extract_learning_patterns(context)
                 self.learning_state["total_learned_patterns"] += 1
@@ -530,7 +997,6 @@ class V3ReliabilityEngine(BaseV3Engine):
     
     def _extract_learning_patterns(self, context: Dict[str, Any]) -> None:
         """Extract learning patterns from context"""
-        # Placeholder for pattern extraction logic
         logger.debug("Extracting learning patterns from context")
         
         # Example pattern extraction
@@ -541,8 +1007,6 @@ class V3ReliabilityEngine(BaseV3Engine):
         if similar_count > 0 and action.get("historical_effectiveness", 0) > 0.7:
             logger.info(f"Learned pattern: Action {action.get('action')} effective with historical context")
     
-# In v3_reliability.py, update the get_stats and shutdown methods:
-
     def get_stats(self) -> Dict[str, Any]:
         """Get comprehensive engine statistics including v3"""
         try:
@@ -592,9 +1056,12 @@ class V3ReliabilityEngine(BaseV3Engine):
             "engine_version": "v3_enhanced",
             "v3_features": v3_stats["v3_features_active"],
             "v3_metrics": v3_stats,
-            "rag_graph_stats": self.rag.get_graph_stats() if self.rag and hasattr(self.rag, 'get_graph_stats') else None,
-            "mcp_server_stats": self.mcp.get_server_stats() if self.mcp and hasattr(self.mcp, 'get_server_stats') else None,
+            "rag_graph_stats": self.rag.get_graph_stats() if self.rag else None,
         }
+        
+        # Add MCP stats if available
+        if self.mcp and hasattr(self.mcp, 'get_server_stats'):
+            combined_stats["mcp_server_stats"] = self.mcp.get_server_stats()
         
         return combined_stats
     
@@ -616,24 +1083,27 @@ class V3ReliabilityEngine(BaseV3Engine):
         logger.info("Enhanced V3ReliabilityEngine shutdown complete")
 
 
-# Factory function for backward compatibility
+# ============================================================================
+# FACTORY FUNCTION
+# ============================================================================
+
 def create_v3_engine(
-    rag_graph: Optional[RAGGraphMemory] = None,
-    mcp_server: Optional[MCPServer] = None
+    faiss_index = None,
+    mcp_server = None
 ) -> V3ReliabilityEngine:
     """
     Factory function to create enhanced V3 engine
     
     Args:
-        rag_graph: Optional RAG graph memory
-        mcp_server: Optional MCP server
+        faiss_index: Optional FAISS index for RAG memory
+        mcp_server: Optional MCP server for execution boundary
         
     Returns:
         Configured V3ReliabilityEngine instance
     """
     try:
         return V3ReliabilityEngine(
-            rag_graph=rag_graph, 
+            faiss_index=faiss_index, 
             mcp_server=mcp_server
         )
     except Exception as e:
