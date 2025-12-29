@@ -178,4 +178,4 @@ if __name__ != "__main__":
             except Exception as e:
                 print(f"⚠️  HealingIntent instantiation failed: {e}")
         else:
-            print(f"❌ OSS core components not available - package is BROKEN")
+            print(f"⚠️ OSS core components not available - using fallback")
