@@ -2,7 +2,7 @@
   <img src="https://dummyimage.com/1200x260/0d1117/00d4ff&text=AGENTIC+RELIABILITY+FRAMEWORK" width="100%" alt="Agentic Reliability Framework Banner" />
 </p>
 
-<h2 align="center">Enterprise-Grade Multi-Agent AI for autonomous system reliability **intelligence** & Advisory Healing Intelligence</h2>
+<h2 align="center">Production-grade multi-agent AI system for infrastructure reliability monitoring and self-healing.</h2>
 
 > **ARF is the first enterprise framework that enables autonomous, context-aware AI agents** with advisory healing intelligence (OSS) and **executed remediation (Enterprise)** for infrastructure reliability monitoring and remediation at scale.
 
