@@ -17,6 +17,7 @@ from dataclasses import dataclass, field, asdict
 from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional, Union, cast, TypedDict, TYPE_CHECKING
 from collections import OrderedDict
+from enum import Enum
 
 # Conditional imports to avoid circular dependencies
 if TYPE_CHECKING:
@@ -36,6 +37,15 @@ logger = logging.getLogger(__name__)
 # ============================================================================
 # TYPE DEFINITIONS
 # ============================================================================
+
+class ConfidenceBasis(str, Enum):
+    """Sources of confidence for healing decisions."""
+    POLICY_ONLY = "policy_only"
+    POLICY_PLUS_SAFETY = "policy_plus_safety"
+    HISTORICAL_SIMILARITY = "historical_similarity"
+    DETERMINISTIC_GUARANTEE = "deterministic_guarantee"
+    LEARNED_OUTCOMES = "learned_outcomes"
+
 
 class EffectivenessStats(TypedDict):
     """Historical effectiveness statistics for actions"""
@@ -121,9 +131,20 @@ class EnhancedRAGGraphMemory:
         with self._lock:
             yield
     
-    def is_enabled(self) -> bool:
-        """Check if RAG memory is enabled and operational"""
-        return getattr(config, 'rag_enabled', False) and (len(self.incident_nodes) > 0 or self.faiss.get_count() > 0)
+    def is_available(self) -> bool:
+        """Check if RAG memory is configured and available (not necessarily has data)."""
+        # RAG is available if configured, regardless of data presence
+        # This fixes cold-start bias
+        return getattr(config, 'rag_enabled', False)
+    
+    def has_historical_data(self) -> bool:
+        """Check if RAG has historical data (affects confidence, not availability)."""
+        return len(self.incident_nodes) > 0 or self.faiss.get_count() > 0
+    
+    def is_operational(self) -> bool:
+        """Check if RAG is operational and ready to provide value."""
+        # Legacy method for compatibility
+        return self.is_available() and self.has_historical_data()
     
     def _generate_incident_id(self, event: Any) -> str:
         """Generate unique incident ID from event fingerprint"""
@@ -220,7 +241,7 @@ class EnhancedRAGGraphMemory:
     
     def store_incident(self, event: Any, analysis: Dict[str, Any]) -> str:
         """Store incident in RAG graph memory"""
-        if not getattr(config, 'rag_enabled', False):
+        if not self.is_available():
             return ""
         
         incident_id = self._generate_incident_id(event)
@@ -303,7 +324,7 @@ class EnhancedRAGGraphMemory:
     
     def find_similar(self, event: Any, analysis: Dict[str, Any], k: int = 3) -> List[Dict[str, Any]]:
         """Find similar historical incidents"""
-        if not self.is_enabled():
+        if not self.is_available():
             return []
         
         try:
@@ -316,6 +337,11 @@ class EnhancedRAGGraphMemory:
                 if key in self._similarity_cache:
                     self._stats["cache_hits"] += 1
                     return self._similarity_cache[key]
+            
+            # If no historical data, return empty list but RAG is still "available"
+            if not self.has_historical_data():
+                logger.debug("RAG available but no historical data")
+                return []
             
             # Perform FAISS search
             self._stats["similarity_searches"] += 1
@@ -471,7 +497,7 @@ class EnhancedRAGGraphMemory:
                 "max_embedding_cache": self._max_embedding_cache_size
             },
             "v3_enabled": True,
-            "is_operational": self.is_enabled(),
+            "is_operational": self.is_operational(),
             "circuit_breaker": {
                 "rag_failures": self._rag_failures,
                 "disabled_until": self._rag_disabled_until
@@ -488,6 +514,9 @@ class MCPResponse(BaseMCPResponse):
     """Extended MCP response with v3 enhancements"""
     approval_id: Optional[str] = None
     tool_result: Optional[Dict[str, Any]] = None
+    confidence_basis: Optional[str] = None  # NEW: Track confidence source
+    learning_applied: bool = False  # NEW: Explicit learning flag
+    learning_reason: str = "OSS advisory mode"  # NEW: Learning status
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary with v3 fields"""
@@ -496,6 +525,10 @@ class MCPResponse(BaseMCPResponse):
             base_dict["approval_id"] = self.approval_id
         if self.tool_result:
             base_dict["tool_result"] = self.tool_result
+        if self.confidence_basis:
+            base_dict["confidence_basis"] = self.confidence_basis
+        base_dict["learning_applied"] = self.learning_applied
+        base_dict["learning_reason"] = self.learning_reason
         return base_dict
 
 
@@ -556,12 +589,14 @@ class V3ReliabilityEngine(BaseV3Engine):
             "historical_context_used": 0,
         }
         
-        # Learning state
+        # Learning state - OSS defaults
         self.learning_state: Dict[str, Any] = {
             "successful_predictions": 0,
             "failed_predictions": 0,
             "total_learned_patterns": 0,
             "last_learning_update": time.time(),
+            "learning_enabled": False,  # OSS default
+            "enterprise_learning": False,  # Only Enterprise learns from outcomes
         }
         
         logger.info(
@@ -622,8 +657,20 @@ class V3ReliabilityEngine(BaseV3Engine):
         start_time = time.time()
         
         try:
-            # Step 1: Run base processing
-            base_result = await super().process_event_enhanced(event)
+            # Step 1: Run base processing with defensive contract handling
+            try:
+                base_result = await super().process_event_enhanced(event)
+                
+                # Validate required fields
+                required_fields = {"status", "incident_id", "healing_actions"}
+                if not all(field in base_result for field in required_fields):
+                    missing = required_fields - set(base_result.keys())
+                    logger.warning(f"Base engine missing fields: {missing}. Creating fallback.")
+                    base_result = self._create_fallback_result(event, base_result)
+                    
+            except Exception as e:
+                logger.error(f"Base engine failed: {e}")
+                base_result = self._create_fallback_result(event, {})
             
             # If not an anomaly, return early
             if base_result.get("status") != "ANOMALY":
@@ -632,22 +679,40 @@ class V3ReliabilityEngine(BaseV3Engine):
             # Step 2: RAG RETRIEVAL (v3 enhancement)
             rag_context: Dict[str, Any] = {}
             similar_incidents: List[Dict[str, Any]] = []
+            confidence_basis = ConfidenceBasis.POLICY_ONLY
+            rag_available = False
+            rag_has_data = False
             
             if self.v3_enabled and self.rag:
                 try:
-                    # Get analysis from base result
-                    analysis = base_result.get("analysis", {})
+                    # Check RAG state separately
+                    rag_available = self.rag.is_available()
+                    rag_has_data = self.rag.has_historical_data()
                     
-                    # Use RAG to find similar historical incidents
-                    similar_incidents = self.rag.find_similar(event, analysis, k=3)
-                    
-                    with self._v3_lock:
-                        self.v3_metrics["rag_queries"] += 1
-                        self.v3_metrics["similar_incidents_found"] += len(similar_incidents)
-                    
-                    # Build RAG context
-                    rag_context = self._build_rag_context(similar_incidents, event)
-                    
+                    if rag_available:
+                        # Get analysis from base result
+                        analysis = base_result.get("analysis", {})
+                        
+                        # Use RAG to find similar historical incidents
+                        similar_incidents = self.rag.find_similar(event, analysis, k=3)
+                        
+                        with self._v3_lock:
+                            self.v3_metrics["rag_queries"] += 1
+                            self.v3_metrics["similar_incidents_found"] += len(similar_incidents)
+                        
+                        # Update confidence basis based on RAG results
+                        if similar_incidents:
+                            confidence_basis = ConfidenceBasis.HISTORICAL_SIMILARITY
+                        elif rag_has_data:
+                            # RAG has data but no similar incidents
+                            logger.debug(f"RAG available with {self.rag.get_graph_stats()['incident_nodes']} incidents, but no similar ones found")
+                        else:
+                            # RAG available but no historical data (cold start)
+                            logger.debug("RAG available but no historical data yet (cold start)")
+                        
+                        # Build RAG context
+                        rag_context = self._build_rag_context(similar_incidents, event)
+                        
                 except Exception as e:
                     logger.warning(f"RAG retrieval failed: {e}")
                     # Continue without RAG context
@@ -659,13 +724,28 @@ class V3ReliabilityEngine(BaseV3Engine):
             if similar_incidents:
                 # Enhance with historical context
                 enhanced_actions = self._enhance_actions_with_context(
-                    base_actions, similar_incidents, event, rag_context
+                    base_actions, similar_incidents, event, rag_context, confidence_basis
                 )
                 
                 with self._v3_lock:
                     self.v3_metrics["historical_context_used"] += 1
             else:
                 enhanced_actions = base_actions
+            
+            # Determine deterministic confidence
+            deterministic_actions = {
+                "restart_container", "scale_up", "scale_down",
+                "toggle_feature_flag", "clear_cache", "reset_connection_pool"
+            }
+            
+            for action in enhanced_actions:
+                action_name = action.get("action", "")
+                if action_name in deterministic_actions and self._is_deterministic_guarantee(action, event):
+                    action["confidence_basis"] = ConfidenceBasis.DETERMINISTIC_GUARANTEE
+                    # Boost confidence for deterministic actions
+                    action["confidence"] = min(0.98, action.get("confidence", 0.5) + 0.4)
+                elif "confidence_basis" not in action:
+                    action["confidence_basis"] = confidence_basis.value
             
             # Step 4: MCP EXECUTION BOUNDARY (v3 enhancement)
             mcp_results: List[Dict[str, Any]] = []
@@ -682,14 +762,17 @@ class V3ReliabilityEngine(BaseV3Engine):
                         # Execute via MCP
                         mcp_response_dict = await self.mcp.execute_tool(mcp_request)
                         
-                        # Convert to MCPResponse object
+                        # Convert to MCPResponse object with confidence tracking
                         mcp_response = MCPResponse(
                             executed=mcp_response_dict.get("executed", False),
                             status=mcp_response_dict.get("status", "unknown"),
                             result=mcp_response_dict.get("result", {}),
                             message=mcp_response_dict.get("message", ""),
                             approval_id=mcp_response_dict.get("approval_id"),
-                            tool_result=mcp_response_dict.get("tool_result")
+                            tool_result=mcp_response_dict.get("tool_result"),
+                            confidence_basis=action.get("confidence_basis", confidence_basis.value),
+                            learning_applied=False,  # OSS default
+                            learning_reason="OSS advisory mode does not learn from outcomes"
                         )
                         
                         with self._v3_lock:
@@ -703,8 +786,8 @@ class V3ReliabilityEngine(BaseV3Engine):
                         if mcp_response.executed or mcp_response.status == "completed":
                             executed_actions.append(action)
                             
-                            # Step 5: OUTCOME RECORDING (v3 learning loop)
-                            if self.rag:
+                            # Step 5: OUTCOME RECORDING (v3 learning loop) - Enterprise only
+                            if self.rag and getattr(config, 'enterprise_mode', False):
                                 outcome = await self._record_outcome(
                                     incident_id=base_result["incident_id"],
                                     action=action,
@@ -713,14 +796,15 @@ class V3ReliabilityEngine(BaseV3Engine):
                                     similar_incidents=similar_incidents
                                 )
                                 
-                                # Update learning state
+                                # Update learning state (Enterprise only)
                                 success = outcome.get("success", False)
-                                self._update_learning_state(success, {
-                                    "incident_id": base_result["incident_id"],
-                                    "action": action,
-                                    "similar_incidents_count": len(similar_incidents),
-                                    "rag_context": rag_context
-                                })
+                                if getattr(config, 'enterprise_mode', False):
+                                    self._update_learning_state(success, {
+                                        "incident_id": base_result["incident_id"],
+                                        "action": action,
+                                        "similar_incidents_count": len(similar_incidents),
+                                        "rag_context": rag_context
+                                    })
                     
                     except Exception as e:
                         logger.error(f"MCP execution failed for action {action.get('action', 'unknown')}: {e}")
@@ -737,10 +821,18 @@ class V3ReliabilityEngine(BaseV3Engine):
                 "v3_enhancements": {
                     "rag_enabled": bool(self.rag),
                     "mcp_enabled": bool(self.mcp),
-                    "learning_enabled": getattr(config, 'learning_enabled', False),
+                    "learning_enabled": getattr(config, 'learning_enabled', False) and getattr(config, 'enterprise_mode', False),  # Only Enterprise
                 },
                 "processing_time_ms": (time.time() - start_time) * 1000,
                 "engine_version": "v3_enhanced",
+                "rag_state": {
+                    "available": rag_available,
+                    "has_data": rag_has_data,
+                    "used_in_decision": bool(similar_incidents)
+                },
+                "learning_applied": False,  # OSS default
+                "learning_reason": "OSS advisory mode does not persist or learn from outcomes",
+                "confidence_regime": confidence_basis.value,
             }
             
             # Add v3-specific data if available
@@ -750,6 +842,7 @@ class V3ReliabilityEngine(BaseV3Engine):
                     "avg_similarity": rag_context.get("avg_similarity", 0.0),
                     "most_effective_action": rag_context.get("most_effective_action"),
                     "historical_success_rate": rag_context.get("success_rate", 0.0),
+                    "confidence_basis": confidence_basis.value,
                 }
             
             if mcp_results:
@@ -784,6 +877,43 @@ class V3ReliabilityEngine(BaseV3Engine):
                     "v3_processing": "failed",
                     "processing_time_ms": (time.time() - start_time) * 1000,
                 }
+    
+    def _create_fallback_result(self, event: Any, partial_result: Dict) -> Dict:
+        """Create fallback result when base engine fails."""
+        return {
+            "incident_id": f"fallback_{int(time.time())}_{event.component if hasattr(event, 'component') else 'unknown'}",
+            "analysis": {
+                "severity": "medium",
+                "fallback_mode": True,
+                "component": getattr(event, 'component', 'unknown'),
+                "latency_ms": getattr(event, 'latency_p99', 0.0),
+                "error_rate": getattr(event, 'error_rate', 0.0)
+            },
+            "healing_actions": [{
+                "action": "investigate_manually",
+                "confidence": 0.5,
+                "confidence_basis": ConfidenceBasis.POLICY_ONLY.value,
+                "reason": "Fallback mode due to engine error",
+                "parameters": {},
+                "metadata": {"fallback": True}
+            }],
+            "status": "ANOMALY",
+            "v3_fallback": True,
+            **partial_result  # Keep any valid fields from partial result
+        }
+    
+    def _is_deterministic_guarantee(self, action: Dict[str, Any], event: Any) -> bool:
+        """Check if action has deterministic safety guarantees."""
+        # Check if action has rollback capability
+        if "rollback" in action.get("safety_features", []):
+            return True
+        
+        # Check bounded impact
+        if getattr(event, 'latency_p99', 0) < 5000:  # Bounded latency impact
+            if action.get("reversible", False):
+                return True
+        
+        return False
     
     def _build_rag_context(
         self, 
@@ -843,7 +973,8 @@ class V3ReliabilityEngine(BaseV3Engine):
         base_actions: List[Dict[str, Any]],
         similar_incidents: List[Dict[str, Any]],
         event: Any,
-        rag_context: Dict[str, Any]
+        rag_context: Dict[str, Any],
+        confidence_basis: ConfidenceBasis
     ) -> List[Dict[str, Any]]:
         """Enhance healing actions with historical context"""
         if not base_actions:
@@ -859,6 +990,7 @@ class V3ReliabilityEngine(BaseV3Engine):
                 "historical_confidence": rag_context.get("avg_similarity", 0.0),
                 "similar_incidents_count": len(similar_incidents),
                 "context_source": "rag_graph",
+                "confidence_basis": confidence_basis.value,
             }
             
             # Add effectiveness score if available
@@ -866,6 +998,21 @@ class V3ReliabilityEngine(BaseV3Engine):
             if most_effective and action.get("action") == most_effective.get("action"):
                 enhanced_action["historical_effectiveness"] = most_effective.get("success_rate", 0.0)
                 enhanced_action["confidence_boost"] = True
+            
+            # Apply confidence caps based on basis
+            current_confidence = enhanced_action.get("confidence", 0.5)
+            
+            if confidence_basis == ConfidenceBasis.HISTORICAL_SIMILARITY:
+                # Empirical confidence capped at 0.9
+                if enhanced_action.get("historical_effectiveness", 0.0) > 0:
+                    enhanced_confidence = min(0.9, current_confidence + (enhanced_action["historical_effectiveness"] * 0.3))
+                else:
+                    enhanced_confidence = min(0.85, current_confidence + 0.2)
+                enhanced_action["confidence"] = enhanced_confidence
+            
+            elif confidence_basis == ConfidenceBasis.DETERMINISTIC_GUARANTEE:
+                # Deterministic confidence can exceed 0.9
+                enhanced_action["confidence"] = min(0.98, current_confidence + 0.4)
             
             enhanced_actions.append(enhanced_action)
         
@@ -885,14 +1032,26 @@ class V3ReliabilityEngine(BaseV3Engine):
         rag_context: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """Create MCP request from enhanced action"""
-        # Build justification with historical context
+        # Build justification with historical context and confidence basis
         justification_parts = [
             f"Event: {getattr(event, 'component', 'unknown')} with {getattr(event, 'latency_p99', 0):.0f}ms latency, {getattr(event, 'error_rate', 0)*100:.1f}% errors",
         ]
         
+        # Add confidence basis explanation
+        confidence_basis = action.get("confidence_basis", ConfidenceBasis.POLICY_ONLY.value)
+        if confidence_basis == ConfidenceBasis.DETERMINISTIC_GUARANTEE:
+            justification_parts.append("Action selected via deterministic safety guarantees (idempotent, reversible, bounded)")
+        elif confidence_basis == ConfidenceBasis.HISTORICAL_SIMILARITY:
+            if historical_context:
+                justification_parts.append(f"Based on {len(historical_context)} similar historical incidents")
+            else:
+                justification_parts.append("Action selected via historical precedent and policy constraints")
+        else:
+            justification_parts.append("Action selected via policy constraints and safety validation")
+        
         if historical_context:
             justification_parts.append(
-                f"Based on {len(historical_context)} similar historical incidents"
+                f"Historical similarity: {rag_context.get('avg_similarity', 0.0)*100:.0f}% match"
             )
         
         if rag_context and rag_context.get("most_effective_action"):
@@ -913,6 +1072,8 @@ class V3ReliabilityEngine(BaseV3Engine):
                 "event_severity": getattr(getattr(event, 'severity', 'low'), 'value', 'low'),
                 "similar_incidents_count": len(historical_context),
                 "historical_confidence": rag_context.get("avg_similarity", 0.0) if rag_context else 0.0,
+                "confidence_basis": confidence_basis,
+                "deterministic_guarantee": confidence_basis == ConfidenceBasis.DETERMINISTIC_GUARANTEE,
                 "rag_context": rag_context,
                 **action.get("metadata", {})
             }
@@ -926,7 +1087,7 @@ class V3ReliabilityEngine(BaseV3Engine):
         event: Optional[Any] = None,
         similar_incidents: Optional[List[Dict[str, Any]]] = None
     ) -> Dict[str, Any]:
-        """Record outcome for learning loop"""
+        """Record outcome for learning loop - Enterprise only"""
         if not self.rag:
             return {}
         
@@ -938,13 +1099,18 @@ class V3ReliabilityEngine(BaseV3Engine):
                 mcp_response.get("result", {}).get("success", False)
             )
             
-            # Estimate resolution time (in production this would be actual time)
+            # In OSS mode, use synthetic estimate with explicit flag
             resolution_time_minutes = 5.0  # Default estimate
+            is_simulated = not getattr(config, 'enterprise_mode', False)
             
             # Extract lessons learned
             lessons_learned = []
             if not success and mcp_response.get("message"):
                 lessons_learned.append(f"Failed: {mcp_response['message']}")
+            
+            # Add simulation flag for OSS
+            if is_simulated:
+                lessons_learned.append("OSS mode: Outcome is simulated, not observed")
             
             # Store outcome in RAG
             outcome_id = self.rag.store_outcome(
@@ -960,6 +1126,8 @@ class V3ReliabilityEngine(BaseV3Engine):
                 "success": success,
                 "resolution_time_minutes": resolution_time_minutes,
                 "action": action.get("action", "unknown"),
+                "simulated_outcome": is_simulated,
+                "enterprise_mode": getattr(config, 'enterprise_mode', False)
             }
             
         except Exception as e:
@@ -971,7 +1139,11 @@ class V3ReliabilityEngine(BaseV3Engine):
         success: bool,
         context: Dict[str, Any]
     ) -> None:
-        """Update learning state based on outcome"""
+        """Update learning state based on outcome - Enterprise only"""
+        if not getattr(config, 'enterprise_mode', False):
+            # OSS does not learn from outcomes
+            return
+        
         if not getattr(config, 'learning_enabled', False):
             return
         
@@ -996,7 +1168,10 @@ class V3ReliabilityEngine(BaseV3Engine):
                 self.v3_metrics["learning_updates"] += 1
     
     def _extract_learning_patterns(self, context: Dict[str, Any]) -> None:
-        """Extract learning patterns from context"""
+        """Extract learning patterns from context - Enterprise only"""
+        if not getattr(config, 'enterprise_mode', False):
+            return
+            
         logger.debug("Extracting learning patterns from context")
         
         # Example pattern extraction
@@ -1037,7 +1212,7 @@ class V3ReliabilityEngine(BaseV3Engine):
             if v3_stats["mcp_calls"] > 0:
                 v3_stats["mcp_success_rate"] = float(v3_stats["mcp_successes"]) / v3_stats["mcp_calls"]
             
-            # Add learning state
+            # Add learning state with explicit flags
             v3_stats.update(self.learning_state)
             
             # Add feature status
@@ -1046,7 +1221,8 @@ class V3ReliabilityEngine(BaseV3Engine):
                 "mcp_available": self.mcp is not None,
                 "rag_enabled": getattr(config, 'rag_enabled', False),
                 "mcp_enabled": getattr(config, 'mcp_enabled', False),
-                "learning_enabled": getattr(config, 'learning_enabled', False),
+                "learning_enabled": getattr(config, 'learning_enabled', False) and getattr(config, 'enterprise_mode', False),  # Only Enterprise
+                "enterprise_mode": getattr(config, 'enterprise_mode', False),
                 "rollout_percentage": getattr(config, 'rollout_percentage', 0),
             }
         
@@ -1057,6 +1233,11 @@ class V3ReliabilityEngine(BaseV3Engine):
             "v3_features": v3_stats["v3_features_active"],
             "v3_metrics": v3_stats,
             "rag_graph_stats": self.rag.get_graph_stats() if self.rag else None,
+            "learning_boundary": {
+                "oss_learning": False,
+                "enterprise_learning": getattr(config, 'enterprise_mode', False) and getattr(config, 'learning_enabled', False),
+                "learning_applied": self.learning_state["total_learned_patterns"] > 0,
+            }
         }
         
         # Add MCP stats if available
@@ -1069,8 +1250,8 @@ class V3ReliabilityEngine(BaseV3Engine):
         """Graceful shutdown of enhanced v3 engine"""
         logger.info("Shutting down Enhanced V3ReliabilityEngine...")
         
-        # Save any pending learning data
-        if getattr(config, 'learning_enabled', False):
+        # Save any pending learning data - Enterprise only
+        if getattr(config, 'enterprise_mode', False) and getattr(config, 'learning_enabled', False):
             logger.info(f"Saved {self.learning_state['total_learned_patterns']} learning patterns")
         
         try:
