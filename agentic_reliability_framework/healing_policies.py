@@ -1,19 +1,37 @@
 """
 Policy Engine for Automated Healing Actions
 Fixed version with thread safety and memory leak prevention
+
+ENHANCEMENT: Added confidence basis and deterministic guarantee detection
+to support v3 engine requirements.
 """
 
 import datetime
 import threading
 import logging
 from collections import OrderedDict
-from typing import Dict, List, Optional, Any, cast
+from typing import Dict, List, Optional, Any, cast, TypedDict
 from .models import HealingPolicy, HealingAction, ReliabilityEvent, PolicyCondition
+from ..config import config  # Added for OSS/Enterprise detection
 
 logger = logging.getLogger(__name__)
 
 
-# Default healing policies with structured conditions
+# Action metadata structure for v3 engine compatibility
+class ActionMetadata(TypedDict, total=False):
+    """Enhanced action metadata for v3 engine"""
+    action: str
+    confidence: float
+    confidence_basis: str
+    parameters: Dict[str, Any]
+    reason: str
+    deterministic_guarantee: bool
+    safety_features: List[str]
+    reversible: bool
+    metadata: Dict[str, Any]
+
+
+# Default healing policies with structured conditions and enhanced metadata
 DEFAULT_HEALING_POLICIES = [
     HealingPolicy(
         name="high_latency_restart",
@@ -73,12 +91,11 @@ class PolicyEngine:
     """
     Thread-safe policy engine with cooldown and rate limiting
     
-    CRITICAL FIXES:
-    - Added RLock for thread safety
-    - Fixed cooldown race condition (atomic check + update)
-    - Implemented LRU eviction to prevent memory leak
-    - Added priority-based policy evaluation
-    - Added rate limiting per policy
+    ENHANCED for v3:
+    - Returns rich action dicts with confidence metadata
+    - Adds confidence_basis for v3 engine compatibility
+    - Detects deterministic guarantees
+    - Integrates with OSS/Enterprise boundaries
     """
     
     def __init__(
@@ -111,25 +128,27 @@ class PolicyEngine:
         # Sort policies by priority (lower number = higher priority)
         self.policies = sorted(self.policies, key=lambda p: p.priority)
         
+        # OSS/Enterprise detection
+        self.is_oss_edition = getattr(config, 'is_oss_edition', True)
+        
         logger.info(
             f"Initialized PolicyEngine with {len(self.policies)} policies, "
-            f"max_cooldown_history={max_cooldown_history}"
+            f"OSS Edition: {self.is_oss_edition}"
         )
     
-    def evaluate_policies(self, event: ReliabilityEvent) -> List[HealingAction]:
+    def evaluate_policies(self, event: ReliabilityEvent) -> List[ActionMetadata]:
         """
-        Evaluate all policies against the event and return matching actions
+        Evaluate all policies against the event and return enhanced actions
         
-        FIXED: Atomic check + update under lock (prevents race condition)
-        FIXED: Priority-based evaluation
+        ENHANCED: Returns rich action dicts with confidence metadata for v3 compatibility
         
         Args:
             event: Reliability event to evaluate
             
         Returns:
-            List of healing actions to execute
+            List of enhanced healing actions with metadata
         """
-        applicable_actions: List[HealingAction] = []
+        applicable_actions: List[ActionMetadata] = []
         current_time = datetime.datetime.now(datetime.timezone.utc).timestamp()
         
         # Evaluate policies in priority order
@@ -139,7 +158,7 @@ class PolicyEngine:
             
             policy_key = f"{policy.name}_{event.component}"
             
-            # FIXED: All cooldown operations under lock (atomic)
+            # All cooldown operations under lock (atomic)
             with self._lock:
                 # Check cooldown
                 last_exec = self.last_execution.get(policy_key, 0)
@@ -159,13 +178,19 @@ class PolicyEngine:
                     )
                     continue
                 
-                # Evaluate conditions first (FIX: only update if conditions match)
+                # Evaluate conditions first
                 should_execute = self._evaluate_conditions(policy.conditions, event)
                 
                 if should_execute:
-                    applicable_actions.extend(policy.actions)
+                    # Convert policy actions to enhanced action dicts
+                    enhanced_actions = self._enhance_actions(
+                        policy.actions, 
+                        policy, 
+                        event
+                    )
+                    applicable_actions.extend(enhanced_actions)
                     
-                    # Update cooldown timestamp (INSIDE lock, AFTER condition check)
+                    # Update cooldown timestamp
                     self._update_cooldown(policy_key, current_time)
                     
                     # Track execution for rate limiting
@@ -173,18 +198,261 @@ class PolicyEngine:
                     
                     logger.info(
                         f"Policy {policy.name} triggered for {event.component}: "
-                        f"actions={[a.value for a in policy.actions]}"
+                        f"actions={[a.get('action', 'unknown') for a in enhanced_actions]}"
                     )
+        
+        # If no actions, return NO_ACTION with advisory metadata
+        if not applicable_actions:
+            return [self._create_no_action_metadata(event)]
         
         # Deduplicate actions while preserving order
         seen = set()
-        unique_actions: List[HealingAction] = []
+        unique_actions: List[ActionMetadata] = []
         for action in applicable_actions:
-            if action not in seen:
-                seen.add(action)
+            action_key = action.get("action", "")
+            if action_key not in seen:
+                seen.add(action_key)
                 unique_actions.append(action)
         
-        return unique_actions if unique_actions else [HealingAction.NO_ACTION]
+        return unique_actions
+    
+    def _enhance_actions(
+        self, 
+        actions: List[HealingAction], 
+        policy: HealingPolicy,
+        event: ReliabilityEvent
+    ) -> List[ActionMetadata]:
+        """
+        Convert HealingAction enums to rich action dicts with metadata
+        
+        CRITICAL: Adds confidence_basis, deterministic guarantees, and other
+        metadata required by v3 engine.
+        
+        Args:
+            actions: List of HealingAction enums
+            policy: Source policy
+            event: Triggering event
+            
+        Returns:
+            List of enhanced action dicts
+        """
+        enhanced: List[ActionMetadata] = []
+        
+        for action_enum in actions:
+            action_name = action_enum.value
+            
+            # Base action metadata
+            action_meta: ActionMetadata = {
+                "action": action_name,
+                "confidence": self._calculate_confidence(action_enum, policy, event),
+                "confidence_basis": "policy_only",  # Default, can be enhanced
+                "parameters": self._get_action_parameters(action_enum, event),
+                "reason": f"Triggered by policy '{policy.name}' for {event.component}",
+                "deterministic_guarantee": self._has_deterministic_guarantee(action_enum),
+                "safety_features": self._get_safety_features(action_enum),
+                "reversible": self._is_reversible(action_enum),
+                "metadata": {
+                    "policy_name": policy.name,
+                    "policy_priority": policy.priority,
+                    "event_component": event.component,
+                    "event_severity": getattr(event.severity, 'value', 'low'),
+                    "oss_edition": self.is_oss_edition,
+                    "execution_allowed": not self.is_oss_edition,  # OSS never executes
+                    "requires_enterprise": self.is_oss_edition,
+                }
+            }
+            
+            # Enhance confidence basis based on action type
+            if action_meta["deterministic_guarantee"]:
+                action_meta["confidence_basis"] = "deterministic_guarantee"
+                action_meta["confidence"] = min(0.98, action_meta["confidence"] + 0.2)
+            elif action_enum in [HealingAction.RESTART_CONTAINER, HealingAction.SCALE_OUT]:
+                action_meta["confidence_basis"] = "policy_plus_safety"
+                action_meta["confidence"] = min(0.9, action_meta["confidence"] + 0.1)
+            
+            # Add OSS advisory flag if needed
+            if self.is_oss_edition:
+                action_meta["metadata"]["oss_advisory"] = True
+                action_meta["metadata"]["advisory_reason"] = "OSS edition only supports advisory mode"
+            
+            enhanced.append(action_meta)
+        
+        return enhanced
+    
+    def _calculate_confidence(
+        self, 
+        action: HealingAction, 
+        policy: HealingPolicy,
+        event: ReliabilityEvent
+    ) -> float:
+        """
+        Calculate confidence score for an action
+        
+        Args:
+            action: Healing action
+            policy: Source policy
+            event: Triggering event
+            
+        Returns:
+            Confidence score (0.0 to 1.0)
+        """
+        base_confidence = 0.7
+        
+        # Adjust based on policy priority (higher priority = more confidence)
+        priority_boost = (4 - min(policy.priority, 4)) * 0.05
+        base_confidence += priority_boost
+        
+        # Adjust based on action type
+        action_confidence_map = {
+            HealingAction.ALERT_TEAM: 0.1,
+            HealingAction.CIRCUIT_BREAKER: 0.15,
+            HealingAction.TRAFFIC_SHIFT: 0.2,
+            HealingAction.SCALE_OUT: 0.25,
+            HealingAction.RESTART_CONTAINER: 0.3,
+            HealingAction.ROLLBACK: 0.35,
+            HealingAction.NO_ACTION: 0.0,
+        }
+        
+        base_confidence += action_confidence_map.get(action, 0.0)
+        
+        # Adjust based on event severity
+        severity = getattr(event.severity, 'value', 'low')
+        severity_boost = {
+            'low': 0.0,
+            'medium': 0.05,
+            'high': 0.1,
+            'critical': 0.15,
+        }.get(severity, 0.0)
+        
+        base_confidence += severity_boost
+        
+        # Cap at 0.95 (leave room for RAG/historical enhancement)
+        return min(0.95, base_confidence)
+    
+    def _get_action_parameters(
+        self, 
+        action: HealingAction, 
+        event: ReliabilityEvent
+    ) -> Dict[str, Any]:
+        """
+        Get default parameters for an action
+        
+        Args:
+            action: Healing action
+            event: Triggering event
+            
+        Returns:
+            Action parameters
+        """
+        base_params = {
+            "component": event.component,
+            "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        }
+        
+        # Action-specific parameters
+        if action == HealingAction.RESTART_CONTAINER:
+            base_params["force"] = True
+            base_params["timeout_seconds"] = 30
+        elif action == HealingAction.SCALE_OUT:
+            base_params["scale_factor"] = 2
+            base_params["min_replicas"] = 1
+            base_params["max_replicas"] = 10
+        elif action == HealingAction.ROLLBACK:
+            base_params["revision"] = "previous"
+            base_params["preserve_config"] = True
+        elif action == HealingAction.CIRCUIT_BREAKER:
+            base_params["failure_threshold"] = 3
+            base_params["timeout_seconds"] = 60
+        
+        return base_params
+    
+    def _has_deterministic_guarantee(self, action: HealingAction) -> bool:
+        """
+        Check if action has deterministic safety guarantees
+        
+        Args:
+            action: Healing action
+            
+        Returns:
+            True if action has deterministic guarantees
+        """
+        deterministic_actions = {
+            HealingAction.RESTART_CONTAINER,
+            HealingAction.SCALE_OUT,
+            HealingAction.TOGGLE_FEATURE_FLAG,
+            HealingAction.CLEAR_CACHE,
+            HealingAction.RESET_CONNECTION_POOL,
+        }
+        
+        return action in deterministic_actions
+    
+    def _get_safety_features(self, action: HealingAction) -> List[str]:
+        """
+        Get safety features for an action
+        
+        Args:
+            action: Healing action
+            
+        Returns:
+            List of safety features
+        """
+        safety_map = {
+            HealingAction.RESTART_CONTAINER: ["rollback", "health_check", "timeout"],
+            HealingAction.SCALE_OUT: ["auto_scaling", "resource_limits", "monitoring"],
+            HealingAction.ROLLBACK: ["revision_control", "health_check", "gradual_rollout"],
+            HealingAction.CIRCUIT_BREAKER: ["automatic_recovery", "monitoring", "alerting"],
+            HealingAction.TRAFFIC_SHIFT: ["canary", "gradual", "rollback"],
+        }
+        
+        return safety_map.get(action, [])
+    
+    def _is_reversible(self, action: HealingAction) -> bool:
+        """
+        Check if action is reversible
+        
+        Args:
+            action: Healing action
+            
+        Returns:
+            True if action is reversible
+        """
+        reversible_actions = {
+            HealingAction.SCALE_OUT,
+            HealingAction.TOGGLE_FEATURE_FLAG,
+            HealingAction.TRAFFIC_SHIFT,
+            HealingAction.CIRCUIT_BREAKER,
+        }
+        
+        return action in reversible_actions
+    
+    def _create_no_action_metadata(self, event: ReliabilityEvent) -> ActionMetadata:
+        """
+        Create NO_ACTION metadata for when no policies trigger
+        
+        Args:
+            event: Reliability event
+            
+        Returns:
+            NO_ACTION metadata
+        """
+        return {
+            "action": "no_action",
+            "confidence": 0.95,
+            "confidence_basis": "policy_only",
+            "parameters": {
+                "component": event.component,
+                "reason": "No applicable policies matched the event",
+            },
+            "reason": "Event did not match any policy conditions",
+            "deterministic_guarantee": False,
+            "safety_features": [],
+            "reversible": True,
+            "metadata": {
+                "event_component": event.component,
+                "policy_evaluated": True,
+                "oss_edition": self.is_oss_edition,
+            }
+        }
     
     def _evaluate_conditions(
         self,
@@ -363,7 +631,8 @@ class PolicyEngine:
                     "enabled": policy.enabled,
                     "cooldown_seconds": policy.cool_down_seconds,
                     "max_per_hour": policy.max_executions_per_hour,
-                    "total_components": total_components
+                    "total_components": total_components,
+                    "oss_edition": self.is_oss_edition,
                 }
                 
                 stats[policy.name] = policy_stats
@@ -419,7 +688,6 @@ def would_policy_trigger(
     engine = PolicyEngine(policies=[policy], max_cooldown_history=0)
     
     # Use a temporary evaluation (not thread-safe, but okay for testing)
-    # We need to access the protected method
     for condition in policy.conditions:
         # Get event value
         event_value = getattr(event, condition.metric, None)
