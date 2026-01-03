@@ -44,7 +44,7 @@ class ConfidenceBasis(str, Enum):
     POLICY_PLUS_SAFETY = "policy_plus_safety"
     HISTORICAL_SIMILARITY = "historical_similarity"
     DETERMINISTIC_GUARANTEE = "deterministic_guarantee"
-    LEARNED_OUTCOMES = "learned_outcomes"
+    LEARNED_OUTCOMES = "learned_outcomes"  # Enterprise only
 
 
 class EffectivenessStats(TypedDict):
@@ -85,6 +85,8 @@ class EnhancedRAGGraphMemory:
     """
     Enhanced RAG Graph Memory with caching and atomic updates
     Integrated directly to avoid circular imports
+    
+    OSS Edition: Limited to 1000 incidents, 5000 outcomes
     """
     
     def __init__(self, faiss_index):
@@ -113,17 +115,22 @@ class EnhancedRAGGraphMemory:
         self._rag_disabled_until = 0.0
         self._rag_last_failure_time = 0.0
         self._similarity_cache: OrderedDict[str, List[Any]] = OrderedDict()
-        self._max_cache_size = 1000  # Default cache size
+        self._max_cache_size = config.rag_cache_size if hasattr(config, 'rag_cache_size') else 1000
         self._embedding_cache: Dict[str, np.ndarray] = {}
         self._max_embedding_cache_size = 100
         self._faiss_to_incident: Dict[int, str] = {}
         
-        # Memory constants
-        self.MAX_INCIDENT_NODES = 1000
-        self.VECTOR_DIM = 128
-        self.GRAPH_CACHE_SIZE = 1000
+        # Memory constants from config with OSS limits
+        self.MAX_INCIDENT_NODES = getattr(config, 'rag_max_incident_nodes', 1000)
+        self.VECTOR_DIM = getattr(config, 'rag_embedding_dim', 384)
+        self.GRAPH_CACHE_SIZE = getattr(config, 'rag_cache_size', 1000)
         
-        logger.info(f"Initialized EnhancedRAGGraphMemory with cache size {self._max_cache_size}")
+        # Enforce OSS limits
+        if self.MAX_INCIDENT_NODES > 1000:
+            logger.warning(f"OSS limit: Reducing MAX_INCIDENT_NODES from {self.MAX_INCIDENT_NODES} to 1000")
+            self.MAX_INCIDENT_NODES = 1000
+        
+        logger.info(f"Initialized EnhancedRAGGraphMemory (OSS Edition) with cache size {self._max_cache_size}")
     
     @contextmanager
     def _transaction(self):
@@ -139,7 +146,7 @@ class EnhancedRAGGraphMemory:
     
     def has_historical_data(self) -> bool:
         """Check if RAG has historical data (affects confidence, not availability)."""
-        return len(self.incident_nodes) > 0 or self.faiss.get_count() > 0
+        return len(self.incident_nodes) > 0 or (hasattr(self.faiss, 'get_count') and self.faiss.get_count() > 0)
     
     def is_operational(self) -> bool:
         """Check if RAG is operational and ready to provide value."""
@@ -300,7 +307,8 @@ class EnhancedRAGGraphMemory:
                 "service_mesh": getattr(event, "service_mesh", ""),
                 "fingerprint": getattr(event, "fingerprint", ""),
                 "created_at": datetime.now().isoformat(),
-                "embedding_dim": self.VECTOR_DIM
+                "embedding_dim": self.VECTOR_DIM,
+                "oss_edition": True,  # Mark as OSS
             }
         }
         
@@ -310,16 +318,16 @@ class EnhancedRAGGraphMemory:
             self._stats["total_incidents_stored"] += 1
             self._stats["last_store_time"] = datetime.now().isoformat()
             
-            # Evict oldest if capacity exceeded
+            # Evict oldest if capacity exceeded (OSS limit)
             if len(self.incident_nodes) > self.MAX_INCIDENT_NODES:
                 oldest_id = min(self.incident_nodes.keys(), 
                                key=lambda x: self.incident_nodes[x].get("metadata", {}).get("created_at", ""))
                 oldest_node = self.incident_nodes.pop(oldest_id)
                 if oldest_node.get("faiss_index") is not None:
                     self._faiss_to_incident.pop(oldest_node["faiss_index"], None)
-                logger.debug(f"Evicted oldest incident {oldest_id}")
+                logger.debug(f"OSS limit: Evicted oldest incident {oldest_id}")
         
-        logger.info(f"Stored incident {incident_id}: {node['component']}")
+        logger.info(f"Stored incident {incident_id}: {node['component']} (OSS Edition)")
         return incident_id
     
     def find_similar(self, event: Any, analysis: Dict[str, Any], k: int = 3) -> List[Dict[str, Any]]:
@@ -376,10 +384,14 @@ class EnhancedRAGGraphMemory:
     def store_outcome(self, incident_id: str, actions_taken: List[str], success: bool, 
                      resolution_time_minutes: Optional[float] = None, 
                      lessons_learned: Optional[List[str]] = None) -> str:
-        """Store outcome for learning"""
+        """Store outcome for learning - OSS: Simulation only"""
         if incident_id not in self.incident_nodes:
             logger.warning(f"Cannot store outcome: Incident {incident_id} not found")
             return ""
+        
+        # OSS EDITION: Only store simulated outcomes
+        is_oss_edition = getattr(config, 'is_oss_edition', True)
+        is_simulated = is_oss_edition  # OSS always simulates
         
         actions_hash = hashlib.sha256(",".join(actions_taken).encode()).hexdigest()
         outcome_id = f"out_{hashlib.sha256(f'{incident_id}:{actions_hash}'.encode()).hexdigest()[:16]}"
@@ -391,7 +403,10 @@ class EnhancedRAGGraphMemory:
             "success": success,
             "resolution_time_minutes": resolution_time_minutes,
             "created_at": datetime.now().isoformat(),
-            "lessons_learned": lessons_learned or []
+            "lessons_learned": lessons_learned or [],
+            "simulated_outcome": is_simulated,  # Mark as simulated
+            "oss_edition": is_oss_edition,
+            "learning_applied": False,  # OSS never learns
         }
         
         with self._transaction():
@@ -404,15 +419,20 @@ class EnhancedRAGGraphMemory:
                 "source_id": incident_id,
                 "target_id": outcome_id,
                 "edge_type": "RESOLVES",
-                "metadata": {"created_at": datetime.now().isoformat()}
+                "metadata": {
+                    "created_at": datetime.now().isoformat(),
+                    "simulated": is_simulated,
+                    "oss_edition": is_oss_edition,
+                }
             }
             self.edges.append(edge)
             self._stats["total_edges_created"] += 1
         
+        logger.debug(f"Stored outcome {outcome_id} (OSS Edition, simulated={is_simulated})")
         return outcome_id
     
     def get_historical_effectiveness(self, action: str, component_filter: Optional[str] = None) -> EffectivenessStats:
-        """Get effectiveness statistics for an action"""
+        """Get effectiveness statistics for an action - OSS: Simulated data only"""
         relevant_outcomes = []
         
         for outcome in self.outcome_nodes.values():
@@ -429,6 +449,8 @@ class EnhancedRAGGraphMemory:
         std_resolution = np.std(resolution_times) if resolution_times else 0.0
         success_rate = successful_uses / total_uses if total_uses > 0 else 0.0
         
+        is_oss_edition = getattr(config, 'is_oss_edition', True)
+        
         return {
             "action": action,
             "total_uses": total_uses,
@@ -437,11 +459,13 @@ class EnhancedRAGGraphMemory:
             "avg_resolution_time_minutes": avg_resolution,
             "resolution_time_std": std_resolution,
             "component_filter": component_filter,
-            "data_points": total_uses
+            "data_points": total_uses,
+            "oss_edition": is_oss_edition,
+            "simulated_data": is_oss_edition,  # OSS data is always simulated
         }
     
     def get_most_effective_actions(self, component: str, k: int = 3) -> List[Dict[str, Any]]:
-        """Get most effective actions for a component"""
+        """Get most effective actions for a component - OSS: Simulated data only"""
         component_actions: Dict[str, Dict[str, Any]] = {}
         
         for outcome in self.outcome_nodes.values():
@@ -462,7 +486,9 @@ class EnhancedRAGGraphMemory:
                 "action": action,
                 "success_rate": success_rate,
                 "total_uses": stats["uses"],
-                "successful_uses": stats["successes"]
+                "successful_uses": stats["successes"],
+                "oss_edition": getattr(config, 'is_oss_edition', True),
+                "simulated_data": True,  # OSS data is simulated
             })
         
         # Sort by success rate
@@ -479,6 +505,8 @@ class EnhancedRAGGraphMemory:
         incidents_with_outcomes = len({o["incident_id"] for o in self.outcome_nodes.values()})
         avg_outcomes_per_incident = len(self.outcome_nodes) / len(self.incident_nodes) if self.incident_nodes else 0.0
         cache_hit_rate = self._stats["cache_hits"] / self._stats["similarity_searches"] if self._stats["similarity_searches"] > 0 else 0.0
+        
+        is_oss_edition = getattr(config, 'is_oss_edition', True)
         
         return {
             "incident_nodes": len(self.incident_nodes),
@@ -501,6 +529,12 @@ class EnhancedRAGGraphMemory:
             "circuit_breaker": {
                 "rag_failures": self._rag_failures,
                 "disabled_until": self._rag_disabled_until
+            },
+            "edition": {
+                "oss": is_oss_edition,
+                "enterprise": not is_oss_edition,
+                "simulated_outcomes": is_oss_edition,  # OSS always simulates
+                "learning_enabled": False,  # OSS never learns
             }
         }
 
@@ -514,9 +548,9 @@ class MCPResponse(BaseMCPResponse):
     """Extended MCP response with v3 enhancements"""
     approval_id: Optional[str] = None
     tool_result: Optional[Dict[str, Any]] = None
-    confidence_basis: Optional[str] = None  # NEW: Track confidence source
-    learning_applied: bool = False  # NEW: Explicit learning flag
-    learning_reason: str = "OSS advisory mode"  # NEW: Learning status
+    confidence_basis: Optional[str] = None  # Track confidence source
+    learning_applied: bool = False  # Explicit learning flag
+    learning_reason: str = "OSS advisory mode"  # Learning status
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary with v3 fields"""
@@ -540,11 +574,11 @@ class V3ReliabilityEngine(BaseV3Engine):
     """
     Enhanced reliability engine with RAG Graph memory and MCP execution boundary.
     
-    Extends the base V3ReliabilityEngine with:
-    1. Semantic search of similar incidents via FAISS
-    2. Historical context enhancement for policy decisions  
-    3. MCP-governed execution of healing actions
-    4. Outcome recording for continuous learning loop
+    OSS Edition Limitations:
+    - RAG: Max 1000 incidents, 5000 outcomes
+    - MCP: Advisory mode only
+    - Learning: Never enabled (Enterprise only)
+    - Outcomes: Simulated only
     """
     
     def __init__(
@@ -589,19 +623,20 @@ class V3ReliabilityEngine(BaseV3Engine):
             "historical_context_used": 0,
         }
         
-        # Learning state - OSS defaults
+        # Learning state - OSS never learns
         self.learning_state: Dict[str, Any] = {
             "successful_predictions": 0,
             "failed_predictions": 0,
             "total_learned_patterns": 0,
             "last_learning_update": time.time(),
-            "learning_enabled": False,  # OSS default
+            "learning_enabled": False,  # OSS default - never learns
             "enterprise_learning": False,  # Only Enterprise learns from outcomes
+            "oss_edition": True,  # Mark as OSS
         }
         
         logger.info(
-            f"Initialized Enhanced V3ReliabilityEngine with RAG and MCP "
-            f"(RAG={self.rag is not None}, MCP={mcp_server is not None})"
+            f"Initialized Enhanced V3ReliabilityEngine (OSS Edition) with "
+            f"RAG={self.rag is not None}, MCP={mcp_server is not None}"
         )
     
     @property
@@ -614,14 +649,7 @@ class V3ReliabilityEngine(BaseV3Engine):
         if not getattr(config, 'mcp_enabled', False):
             return False
         
-        # Check rollout percentage if configured
-        rollout_percentage = getattr(config, 'rollout_percentage', 100)
-        if rollout_percentage < 100:
-            # Simple hash-based rollout
-            import random
-            random.seed(int(time.time()))
-            return random.random() * 100 < rollout_percentage
-        
+        # OSS EDITION: No rollout percentage, always enabled if flags are set
         return True
     
     def _validate_base_contract(self, base_result: Dict[str, Any], event: Any) -> Dict[str, Any]:
@@ -666,7 +694,7 @@ class V3ReliabilityEngine(BaseV3Engine):
         """
         Enhanced event processing with RAG retrieval and MCP execution.
         
-        Extends the base implementation with v3 features.
+        OSS Edition: Advisory only, no execution, simulated outcomes
         """
         # Get event from args or kwargs
         event = kwargs.get("event") or (args[0] if args else None)
@@ -794,7 +822,7 @@ class V3ReliabilityEngine(BaseV3Engine):
                             action, event, similar_incidents, rag_context
                         )
                         
-                        # Execute via MCP
+                        # Execute via MCP (OSS: Advisory only)
                         mcp_response_dict = await self.mcp.execute_tool(mcp_request)
                         
                         # Convert to MCPResponse object with confidence tracking
@@ -806,7 +834,7 @@ class V3ReliabilityEngine(BaseV3Engine):
                             approval_id=mcp_response_dict.get("approval_id"),
                             tool_result=mcp_response_dict.get("tool_result"),
                             confidence_basis=action.get("confidence_basis", confidence_basis.value),
-                            learning_applied=False,  # OSS default
+                            learning_applied=False,  # OSS default - never learns
                             learning_reason="OSS advisory mode does not learn from outcomes"
                         )
                         
@@ -817,12 +845,12 @@ class V3ReliabilityEngine(BaseV3Engine):
                         
                         mcp_results.append(mcp_response.to_dict())
                         
-                        # If action was executed, record it
+                        # OSS EDITION: Never executes, only advisory
                         if mcp_response.executed or mcp_response.status == "completed":
                             executed_actions.append(action)
                             
-                            # Step 5: OUTCOME RECORDING (v3 learning loop) - Enterprise only
-                            if self.rag and getattr(config, 'enterprise_mode', False):
+                            # Step 5: OUTCOME RECORDING (OSS: Simulated only)
+                            if self.rag:
                                 outcome = await self._record_outcome(
                                     incident_id=base_result["incident_id"],
                                     action=action,
@@ -830,16 +858,6 @@ class V3ReliabilityEngine(BaseV3Engine):
                                     event=event,
                                     similar_incidents=similar_incidents
                                 )
-                                
-                                # Update learning state (Enterprise only)
-                                success = outcome.get("success", False)
-                                if getattr(config, 'enterprise_mode', False):
-                                    self._update_learning_state(success, {
-                                        "incident_id": base_result["incident_id"],
-                                        "action": action,
-                                        "similar_incidents_count": len(similar_incidents),
-                                        "rag_context": rag_context
-                                    })
                     
                     except Exception as e:
                         logger.error(f"MCP execution failed for action {action.get('action', 'unknown')}: {e}")
@@ -856,18 +874,31 @@ class V3ReliabilityEngine(BaseV3Engine):
                 "v3_enhancements": {
                     "rag_enabled": bool(self.rag),
                     "mcp_enabled": bool(self.mcp),
-                    "learning_enabled": getattr(config, 'learning_enabled', False) and getattr(config, 'enterprise_mode', False),  # Only Enterprise
+                    "learning_enabled": False,  # OSS: Never enabled
+                    "oss_edition": True,  # Mark as OSS
                 },
                 "processing_time_ms": (time.time() - start_time) * 1000,
-                "engine_version": "v3_enhanced",
+                "engine_version": "v3_enhanced_oss",
                 "rag_state": {
                     "available": rag_available,
                     "has_data": rag_has_data,
-                    "used_in_decision": bool(similar_incidents)
+                    "used_in_decision": bool(similar_incidents),
+                    "oss_limits": {
+                        "max_incidents": 1000,
+                        "max_outcomes": 5000,
+                        "cold_start_supported": True,  # FIXED: Yes
+                    }
                 },
-                "learning_applied": False,  # OSS default
+                "learning_applied": False,  # OSS default - never learns
                 "learning_reason": "OSS advisory mode does not persist or learn from outcomes",
                 "confidence_regime": confidence_basis.value,
+                "edition_info": {
+                    "oss": True,
+                    "enterprise": False,
+                    "execution_allowed": False,
+                    "advisory_only": True,
+                    "upgrade_url": "https://arf.dev/enterprise",
+                }
             }
             
             # Add v3-specific data if available
@@ -878,6 +909,7 @@ class V3ReliabilityEngine(BaseV3Engine):
                     "most_effective_action": rag_context.get("most_effective_action"),
                     "historical_success_rate": rag_context.get("success_rate", 0.0),
                     "confidence_basis": confidence_basis.value,
+                    "simulated_data": True,  # OSS data is simulated
                 }
             
             if mcp_results:
@@ -996,6 +1028,8 @@ class V3ReliabilityEngine(BaseV3Engine):
                 inc.get("component") == getattr(current_event, 'component', 'unknown')
                 for inc in similar_incidents
             ),
+            "simulated_data": True,  # OSS data is simulated
+            "oss_edition": True,
         }
         
         if most_effective_action:
@@ -1026,6 +1060,7 @@ class V3ReliabilityEngine(BaseV3Engine):
                 "similar_incidents_count": len(similar_incidents),
                 "context_source": "rag_graph",
                 "confidence_basis": confidence_basis.value,  # CRITICAL: Set confidence basis
+                "oss_edition": True,  # Mark as OSS
             }
             
             # Add effectiveness score if available
@@ -1033,6 +1068,7 @@ class V3ReliabilityEngine(BaseV3Engine):
             if most_effective and action.get("action") == most_effective.get("action"):
                 enhanced_action["historical_effectiveness"] = most_effective.get("success_rate", 0.0)
                 enhanced_action["confidence_boost"] = True
+                enhanced_action["simulated_effectiveness"] = True  # OSS data is simulated
             
             # Apply confidence caps based on basis
             current_confidence = enhanced_action.get("confidence", 0.5)
@@ -1078,7 +1114,7 @@ class V3ReliabilityEngine(BaseV3Engine):
             justification_parts.append("Action selected via deterministic safety guarantees (idempotent, reversible, bounded)")
         elif confidence_basis == ConfidenceBasis.HISTORICAL_SIMILARITY:
             if historical_context:
-                justification_parts.append(f"Based on {len(historical_context)} similar historical incidents")
+                justification_parts.append(f"Based on {len(historical_context)} similar historical incidents (OSS simulated data)")
             else:
                 justification_parts.append("Action selected via historical precedent and policy constraints")
         else:
@@ -1092,8 +1128,11 @@ class V3ReliabilityEngine(BaseV3Engine):
         if rag_context and rag_context.get("most_effective_action"):
             effective = rag_context["most_effective_action"]
             justification_parts.append(
-                f"Historically {effective.get('action')} has {effective.get('success_rate', 0)*100:.0f}% success rate"
+                f"Historically {effective.get('action')} has {effective.get('success_rate', 0)*100:.0f}% success rate (simulated)"
             )
+        
+        # OSS edition notice
+        justification_parts.append("OSS Edition: Advisory analysis only - Enterprise required for execution")
         
         justification = ". ".join(justification_parts)
         
@@ -1110,6 +1149,9 @@ class V3ReliabilityEngine(BaseV3Engine):
                 "confidence_basis": confidence_basis,  # PASS TO MCP SERVER
                 "deterministic_guarantee": confidence_basis == ConfidenceBasis.DETERMINISTIC_GUARANTEE,
                 "rag_context": rag_context,
+                "oss_edition": True,
+                "execution_allowed": False,
+                "advisory_only": True,
                 **action.get("metadata", {})
             }
         }
@@ -1122,7 +1164,7 @@ class V3ReliabilityEngine(BaseV3Engine):
         event: Optional[Any] = None,
         similar_incidents: Optional[List[Dict[str, Any]]] = None
     ) -> Dict[str, Any]:
-        """Record outcome for learning loop - Enterprise only"""
+        """Record outcome for learning loop - OSS: Simulated only"""
         if not self.rag:
             return {}
         
@@ -1134,9 +1176,9 @@ class V3ReliabilityEngine(BaseV3Engine):
                 mcp_response.get("result", {}).get("success", False)
             )
             
-            # EXPLICIT BOUNDARY: OSS vs Enterprise
-            is_enterprise = getattr(config, 'enterprise_mode', False)
-            is_simulated = not is_enterprise
+            # OSS EDITION: Always simulated
+            is_oss_edition = getattr(config, 'is_oss_edition', True)
+            is_simulated = is_oss_edition  # OSS always simulates
             
             # In OSS mode, use synthetic estimate with explicit flag
             resolution_time_minutes = 5.0  # Default estimate
@@ -1151,7 +1193,7 @@ class V3ReliabilityEngine(BaseV3Engine):
                 lessons_learned.append("OSS_ADVISORY: Outcome simulated for demonstration only")
                 lessons_learned.append("Enterprise required for real outcome tracking and learning")
             
-            # Store outcome in RAG
+            # Store outcome in RAG (simulated)
             outcome_id = self.rag.store_outcome(
                 incident_id=incident_id,
                 actions_taken=[action.get("action", "unknown")],
@@ -1166,7 +1208,7 @@ class V3ReliabilityEngine(BaseV3Engine):
                 "resolution_time_minutes": resolution_time_minutes,
                 "action": action.get("action", "unknown"),
                 "simulated_outcome": is_simulated,
-                "enterprise_mode": is_enterprise,
+                "enterprise_mode": not is_oss_edition,
                 "learning_applied": False,  # OSS never learns
                 "learning_reason": "OSS advisory mode does not learn from outcomes",
             }
@@ -1180,48 +1222,14 @@ class V3ReliabilityEngine(BaseV3Engine):
         success: bool,
         context: Dict[str, Any]
     ) -> None:
-        """Update learning state based on outcome - Enterprise only"""
-        if not getattr(config, 'enterprise_mode', False):
-            # OSS does not learn from outcomes
-            return
-        
-        if not getattr(config, 'learning_enabled', False):
-            return
-        
-        with self._v3_lock:
-            self.learning_state["last_learning_update"] = time.time()
-            
-            if success:
-                self.learning_state["successful_predictions"] += 1
-            else:
-                self.learning_state["failed_predictions"] += 1
-            
-            # Check if we should extract new patterns
-            total_predictions = (
-                self.learning_state["successful_predictions"] + 
-                self.learning_state["failed_predictions"]
-            )
-            
-            learning_min_data_points = getattr(config, 'learning_min_data_points', 5)
-            if total_predictions % learning_min_data_points == 0:
-                self._extract_learning_patterns(context)
-                self.learning_state["total_learned_patterns"] += 1
-                self.v3_metrics["learning_updates"] += 1
+        """Update learning state based on outcome - OSS: Never learns"""
+        # OSS does not learn from outcomes
+        return
     
     def _extract_learning_patterns(self, context: Dict[str, Any]) -> None:
-        """Extract learning patterns from context - Enterprise only"""
-        if not getattr(config, 'enterprise_mode', False):
-            return
-            
-        logger.debug("Extracting learning patterns from context")
-        
-        # Example pattern extraction
-        incident_id = context.get("incident_id")
-        action = context.get("action", {})
-        similar_count = context.get("similar_incidents_count", 0)
-        
-        if similar_count > 0 and action.get("historical_effectiveness", 0) > 0.7:
-            logger.info(f"Learned pattern: Action {action.get('action')} effective with historical context")
+        """Extract learning patterns from context - OSS: Never learns"""
+        # OSS does not learn from outcomes
+        return
     
     def get_stats(self) -> Dict[str, Any]:
         """Get comprehensive engine statistics including v3"""
@@ -1262,22 +1270,35 @@ class V3ReliabilityEngine(BaseV3Engine):
                 "mcp_available": self.mcp is not None,
                 "rag_enabled": getattr(config, 'rag_enabled', False),
                 "mcp_enabled": getattr(config, 'mcp_enabled', False),
-                "learning_enabled": getattr(config, 'learning_enabled', False) and getattr(config, 'enterprise_mode', False),  # Only Enterprise
-                "enterprise_mode": getattr(config, 'enterprise_mode', False),
-                "rollout_percentage": getattr(config, 'rollout_percentage', 0),
+                "learning_enabled": False,  # OSS: Never enabled
+                "enterprise_mode": not getattr(config, 'is_oss_edition', True),  # Correct detection
+                "oss_edition": getattr(config, 'is_oss_edition', True),
             }
         
         # Combine stats
         combined_stats: Dict[str, Any] = {
             **base_stats,
-            "engine_version": "v3_enhanced",
+            "engine_version": "v3_enhanced_oss",
             "v3_features": v3_stats["v3_features_active"],
             "v3_metrics": v3_stats,
             "rag_graph_stats": self.rag.get_graph_stats() if self.rag else None,
             "learning_boundary": {
                 "oss_learning": False,
-                "enterprise_learning": getattr(config, 'enterprise_mode', False) and getattr(config, 'learning_enabled', False),
-                "learning_applied": self.learning_state["total_learned_patterns"] > 0,
+                "enterprise_learning": False,  # OSS never has Enterprise learning
+                "learning_applied": False,
+                "learning_available": False,  # OSS never learns
+            },
+            "edition_info": {
+                "oss": True,
+                "enterprise": False,
+                "execution_allowed": False,
+                "advisory_only": True,
+                "upgrade_url": "https://arf.dev/enterprise",
+                "oss_limits": {
+                    "max_incidents": 1000,
+                    "max_outcomes": 5000,
+                    "cold_start_supported": True,
+                }
             }
         }
         
@@ -1289,11 +1310,10 @@ class V3ReliabilityEngine(BaseV3Engine):
     
     def shutdown(self) -> None:
         """Graceful shutdown of enhanced v3 engine"""
-        logger.info("Shutting down Enhanced V3ReliabilityEngine...")
+        logger.info("Shutting down Enhanced V3ReliabilityEngine (OSS Edition)...")
         
-        # Save any pending learning data - Enterprise only
-        if getattr(config, 'enterprise_mode', False) and getattr(config, 'learning_enabled', False):
-            logger.info(f"Saved {self.learning_state['total_learned_patterns']} learning patterns")
+        # OSS EDITION: No learning data to save
+        logger.info("OSS Edition: No learning data to save (learning disabled)")
         
         try:
             # Try to call super().shutdown() if it exists
