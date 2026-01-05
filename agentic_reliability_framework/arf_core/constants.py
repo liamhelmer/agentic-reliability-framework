@@ -15,6 +15,28 @@ import os
 import hashlib
 import importlib
 
+# ==================== VERSION HELPERS ====================
+
+def _get_oss_version() -> str:
+    """
+    Get OSS version from package metadata
+    
+    Returns:
+        Version string like "3.3.6-oss"
+    """
+    try:
+        # Try to import from the main package
+        import agentic_reliability_framework
+        version = getattr(agentic_reliability_framework, "__version__", "3.3.6-oss")
+        # Ensure it has OSS suffix
+        if not version.endswith("-oss"):
+            version = f"{version}-oss"
+        return version
+    except ImportError:
+        # Fallback for when package isn't installed yet
+        return "3.3.6-oss"
+
+
 # ==================== OSS ARCHITECTURAL BOUNDARIES ====================
 
 # === EXECUTION BOUNDARIES ===
@@ -55,7 +77,6 @@ DISALLOWED_ACTIONS: Final[Tuple[str, ...]] = (
 # === VERSION & EDITION ===
 OSS_EDITION: Final[str] = "open-source"
 OSS_LICENSE: Final[str] = "Apache 2.0"
-# OSS_VERSION will be set after imports to avoid circular dependencies
 OSS_VERSION: Final[str] = _get_oss_version()
 ENTERPRISE_UPGRADE_URL: Final[str] = "https://arf.dev/enterprise"
 
@@ -374,7 +395,7 @@ def validate_memory_implementation() -> None:
     violations: List[str] = []
     
     try:
-        # FIXED: Use lazy import to avoid circular dependencies
+        # Use lazy import to avoid circular dependencies
         # Only import if the module exists and we're in a runtime that needs validation
         if "agentic_reliability_framework.memory.faiss_index" in sys.modules:
             # Module already imported, check it
@@ -447,28 +468,6 @@ def get_oss_memory_limits() -> Dict[str, Any]:
     }
 
 
-# ==================== VERSION HELPERS ====================
-
-def _get_oss_version() -> str:
-    """
-    Get OSS version from package metadata
-    
-    Returns:
-        Version string like "3.3.6-oss"
-    """
-    try:
-        # Try to import from the main package
-        import agentic_reliability_framework
-        version = getattr(agentic_reliability_framework, "__version__", "3.3.6-oss")
-        # Ensure it has OSS suffix
-        if not version.endswith("-oss"):
-            version = f"{version}-oss"
-        return version
-    except ImportError:
-        # Fallback for when package isn't installed yet
-        return "3.3.6-oss"
-
-
 # ==================== BUILD-TIME VALIDATION ====================
 
 def _validate_oss_constants_at_import() -> None:
@@ -503,7 +502,7 @@ def _validate_oss_constants_at_import() -> None:
 
 
 # Conditionally run validation on import
-# FIXED: Only validate if not in test mode to avoid test failures
+# Only validate if not in test mode to avoid test failures
 if "PYTEST_CURRENT_TEST" not in os.environ and "pytest" not in sys.modules:
     _validate_oss_constants_at_import()
 
