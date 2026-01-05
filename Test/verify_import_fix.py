@@ -45,8 +45,11 @@ def test_arf_core_imports():
     print("\nTesting ARF core imports...")
     
     try:
-        # Clear any existing imports
-        modules_to_clear = [m for m in sys.modules.keys() if 'arf_core' in m]
+        # Clear any existing imports - SAFELY
+        modules_to_clear = [
+            m for m in sys.modules.keys() 
+            if 'arf_core' in m and 'test' not in m
+        ]
         for module in modules_to_clear:
             del sys.modules[module]
         
@@ -171,10 +174,10 @@ def test_complete_workflow():
     print("\nTesting complete import workflow...")
     
     try:
-        # Clear everything and start fresh
+        # Clear everything and start fresh - SAFELY
         modules_to_clear = [
             m for m in sys.modules.keys() 
-            if m.startswith('agentic_reliability_framework')
+            if m.startswith('agentic_reliability_framework') and 'test' not in m
         ]
         for module in modules_to_clear:
             del sys.modules[module]
