@@ -117,9 +117,9 @@ def test_import_chain():
         lambda: (__import__('agentic_reliability_framework.engine'),
                  __import__('agentic_reliability_framework.arf_core.engine')),
         
-        # Chain 3: arf_core.models -> create_compatible_event
+        # Chain 3: arf_core.models -> check create_compatible_event exists
         lambda: (__import__('agentic_reliability_framework.arf_core.models'),
-                 from agentic_reliability_framework.arf_core.models import create_compatible_event),
+                 hasattr(__import__('agentic_reliability_framework.arf_core').models, 'create_compatible_event')),
     ]
     
     for i, import_chain in enumerate(import_chains):
@@ -127,12 +127,14 @@ def test_import_chain():
             # Clear all ARF modules
             modules_to_clear = [
                 m for m in sys.modules.keys() 
-                if m.startswith('agentic_reliability_framework')
+                if m.startswith('agentic_reliability_framework') and 'test' not in m
             ]
             for module in modules_to_clear:
                 del sys.modules[module]
             
-            import_chain()
+            result = import_chain()
+            if i == 2:  # Special handling for chain 3
+                assert result[1] == True, "create_compatible_event not found"
             print(f"✓ Import chain {i+1} successful")
         except Exception as e:
             pytest.fail(f"Import chain {i+1} failed: {e}")
