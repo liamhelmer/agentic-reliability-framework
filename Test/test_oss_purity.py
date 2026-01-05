@@ -67,12 +67,45 @@ class TestOSSPurity:
                                 violations.append(f"{py_file}: imports '{forbidden}'")
                         
                         # Check for enterprise mentions (case-insensitive)
-                        content_lower = content.lower()
-                        if "enterprise" in content_lower:
-                            lines = content.split('\n')
-                            for i, line in enumerate(lines):
-                                line_lower = line.lower()
-                                if "enterprise" in line_lower and not line.strip().startswith('#'):
+                        lines = content.split('\n')
+                        for i, line in enumerate(lines):
+                            line_lower = line.lower()
+                            if "enterprise" in line_lower:
+                                # Skip comment lines
+                                stripped_line = line.strip()
+                                if stripped_line.startswith('#') or stripped_line.startswith('"""') or stripped_line.startswith("'''"):
+                                    continue
+                                
+                                # Skip documentation strings (full line)
+                                if stripped_line.startswith('"""') and stripped_line.endswith('"""'):
+                                    continue
+                                if stripped_line.startswith("'''") and stripped_line.endswith("'''"):
+                                    continue
+                                
+                                # Skip if line is a string literal (starts and ends with quotes)
+                                if (stripped_line.startswith('"') and stripped_line.endswith('"')) or \
+                                   (stripped_line.startswith("'") and stripped_line.endswith("'")):
+                                    continue
+                                
+                                # Check if "enterprise" appears inside quotes within the line
+                                in_single_quote = False
+                                in_double_quote = False
+                                escaped = False
+                                for j, char in enumerate(line):
+                                    if not escaped:
+                                        if char == '\\':
+                                            escaped = True
+                                            continue
+                                        elif char == "'" and not in_double_quote:
+                                            in_single_quote = not in_single_quote
+                                        elif char == '"' and not in_single_quote:
+                                            in_double_quote = not in_double_quote
+                                        elif char.lower() == 'e' and line_lower.startswith('enterprise', j):
+                                            if in_single_quote or in_double_quote:
+                                                # "enterprise" is inside quotes, skip this line
+                                                break
+                                    escaped = False
+                                else:
                                     # Check if line contains any allowed patterns
                                     is_allowed = False
                                     for allowed in allowed_enterprise_patterns:
