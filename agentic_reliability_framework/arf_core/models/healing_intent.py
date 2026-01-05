@@ -17,13 +17,14 @@ See the License for the complete language governing permissions and limitations 
 """
 
 from dataclasses import dataclass, field, asdict
-from typing import Dict, Any, Optional, List, ClassVar, TYPE_CHECKING  # Added TYPE_CHECKING
+from typing import Dict, Any, Optional, List, ClassVar, TYPE_CHECKING, Union
 from datetime import datetime
 import hashlib
 import json
 import time
 import uuid
 from enum import Enum
+from copy import deepcopy
 
 from ..constants import (
     OSS_EDITION,
@@ -132,7 +133,7 @@ class HealingIntent:
     MAX_SIMILAR_INCIDENTS: ClassVar[int] = 10  # Limit RAG context size
     VERSION: ClassVar[str] = "1.1.0"  # Bumped for OSS integration
     
-    def __post_init__(self) -> None:  # FIXED: Added return type annotation
+    def __post_init__(self) -> None:
         """Validate HealingIntent after initialization with OSS boundaries"""
         self._validate_oss_boundaries()
     
@@ -201,12 +202,27 @@ class HealingIntent:
                             f"got {type(similarity).__name__}"
                         )
         
-        # Validate OSS edition restrictions
-        if self.execution_allowed and self.oss_edition == OSS_EDITION:
-            errors.append("Execution not allowed in OSS edition")
+        # Validate OSS edition restrictions - FIXED LOGIC
+        if self.oss_edition == OSS_EDITION:
+            # In OSS edition, execution should never be allowed
+            if self.execution_allowed:
+                errors.append("Execution not allowed in OSS edition")
+            
+            # In OSS edition, status should not be executing
+            if self.status == IntentStatus.EXECUTING:
+                errors.append("EXECUTING status not allowed in OSS edition")
+            
+            # In OSS edition, executed_at should not be set
+            if self.executed_at is not None:
+                errors.append("executed_at should not be set in OSS edition")
+            
+            # In OSS edition, execution_id should not be set
+            if self.execution_id is not None:
+                errors.append("execution_id should not be set in OSS edition")
         
-        if self.status == IntentStatus.EXECUTING and self.oss_edition == OSS_EDITION:
-            errors.append("EXECUTING status not allowed in OSS edition")
+        # Validate that EXECUTION_ALLOWED constant matches OSS edition
+        if self.oss_edition == OSS_EDITION and EXECUTION_ALLOWED:
+            errors.append(f"EXECUTION_ALLOWED constant must be False in OSS edition")
         
         if errors:
             raise ValidationError(
@@ -568,10 +584,14 @@ class HealingIntent:
         # Use provided RAG score or calculate from similar incidents
         final_rag_score = rag_similarity_score
         if final_rag_score is None and similar_incidents and len(similar_incidents) > 0:
-            final_rag_score = sum(
+            # Take average of top 3 similarities
+            top_similarities = [
                 inc.get("similarity", 0.0)
                 for inc in similar_incidents[:3]
-            ) / min(3, len(similar_incidents))
+                if "similarity" in inc
+            ]
+            if top_similarities:
+                final_rag_score = sum(top_similarities) / len(top_similarities)
         
         return cls(
             action=action,
@@ -610,9 +630,12 @@ class HealingIntent:
         
         # Calculate success rate if not provided
         if success_rate is None:
-            successful = sum(1 for inc in similar_incidents if inc.get("success", False))
-            # similar_incidents is guaranteed to be truthy here (otherwise exception raised above)
-            success_rate = successful / len(similar_incidents)
+            # FIXED: Guard against empty similar_incidents list
+            if len(similar_incidents) == 0:
+                success_rate = 0.0
+            else:
+                successful = sum(1 for inc in similar_incidents if inc.get("success", False))
+                success_rate = successful / len(similar_incidents)
         
         # Generate justification
         justification = justification_template.format(
@@ -676,24 +699,35 @@ class HealingIntent:
         normalized: Dict[str, Any] = {}
         
         for key, value in sorted(params.items()):
-            if isinstance(value, (int, float, str, bool, type(None))):
-                normalized[key] = value
-            elif isinstance(value, (list, tuple)):
-                # Recursively normalize list items
-                normalized_items: List[Any] = []
-                for v in value:
-                    if isinstance(v, dict):
-                        normalized_items.append(self._normalize_parameters(v))
-                    else:
-                        normalized_items.append(v)
-                normalized[key] = tuple(normalized_items)
-            elif isinstance(value, dict):
-                normalized[key] = self._normalize_parameters(value)
-            else:
-                # Convert to string representation for other types
-                normalized[key] = str(value)
+            normalized[key] = self._normalize_value(value)
         
         return normalized
+    
+    def _normalize_value(self, value: Any) -> Any:
+        """Normalize a single value for hashing"""
+        if isinstance(value, (int, float, str, bool, type(None))):
+            return value
+        elif isinstance(value, (list, tuple, set)):
+            # Convert all iterables to sorted tuples
+            normalized_items = tuple(
+                sorted(
+                    self._normalize_value(v) for v in value
+                )
+            )
+            return normalized_items
+        elif isinstance(value, dict):
+            # Recursively normalize dicts
+            return self._normalize_parameters(value)
+        elif hasattr(value, '__dict__'):
+            # Handle objects with __dict__
+            return self._normalize_parameters(value.__dict__)
+        else:
+            # Convert to string representation for other types
+            try:
+                return str(value)
+            except Exception:
+                # Fallback for objects that can't be stringified
+                return f"<unserializable:{type(value).__name__}>"
     
     def get_oss_context(self) -> Dict[str, Any]:
         """
@@ -746,6 +780,15 @@ class HealingIntent:
             summary["similar_incidents_count"] = len(self.similar_incidents)
         
         return summary
+    
+    def is_immutable(self) -> bool:
+        """Check if the intent is truly immutable (frozen dataclass property)"""
+        try:
+            # Try to modify a field - should raise FrozenInstanceError
+            object.__setattr__(self, '_test_immutable', True)
+            return False
+        except:
+            return True
 
 
 class HealingIntentSerializer:
@@ -910,6 +953,10 @@ class HealingIntentSerializer:
             
             # Check similar incidents limit
             if intent.similar_incidents and len(intent.similar_incidents) > intent.MAX_SIMILAR_INCIDENTS:
+                return False
+            
+            # Check that frozen dataclass property is preserved
+            if not intent.is_immutable():
                 return False
             
             return True
