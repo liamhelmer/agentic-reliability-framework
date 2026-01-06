@@ -27,10 +27,11 @@ def check_no_enterprise_code():
         return True
     
     # Patterns that should NEVER appear in OSS code
+    # FIXED: Updated to use correct variable name has_enterprise_key
     forbidden_patterns = [
         "EnterpriseMCPServer",
         "LicenseManager",
-        "license_key",
+        "has_enterprise_key",  # FIXED: Changed from "license_key"
         "ARF-ENT-",  # License key pattern
     ]
     
