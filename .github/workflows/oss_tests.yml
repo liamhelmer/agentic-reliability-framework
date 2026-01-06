@@ -28,7 +28,7 @@ jobs:
       run: pip install -e .
       
     - name: Install pytest and pytest-cov
-      run: pip install pytest pytest-cov  # ← ADD THIS
+      run: pip install pytest pytest-cov
     
     - name: Run circular import verification
       run: python scripts/verify_circular_fix.py --quick
@@ -37,7 +37,7 @@ jobs:
       run: python scripts/oss_boundary_check.py
       
     - name: Run basic tests (WITH coverage support)
-      run: python -m pytest Test/test_basic.py -v  # ← Runs OSS-safe test suite with pytest
+      run: python -m pytest Test/test_basic.py -v
 
     - name: Verify Enterprise imports are blocked
       run: |
@@ -46,10 +46,9 @@ jobs:
         try:
             import agentic_reliability_enterprise
             raise SystemExit("❌ Enterprise package should not be importable in OSS") 
-            except ImportError:
+        except ImportError:
             print("✅ Enterprise imports correctly blocked")
         EOF
-
       
     - name: Verify imports work
       run: |
