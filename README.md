@@ -118,7 +118,6 @@ ARF collapses that gap by providing a hybrid intelligence system that advises sa
 
 ---
 
-> **OSS is permanently advisory-only by design.**
 > Execution, persistence, and autonomous actions are exclusive to Enterprise.
 
 ---
