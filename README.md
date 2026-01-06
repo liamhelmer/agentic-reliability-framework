@@ -240,7 +240,7 @@ Signals → Incidents → Memory Graph → Decision → Policy → Execution
 
 **Key insight:** Reliability improves when systems *remember*.
 
-🔧 Architecture (Code-Accurate)
+🔧 Architecture
 -------------------------------
 
 **🏗️ Core Architecture**  
@@ -298,7 +298,72 @@ Healing Actions occur only in Enterprise deployments.
 2.  **Memory Layer** prevents _"forgetting past learnings"_ 
     
 3.  **Execution Layer** prevents _"unsafe, unconstrained actions"_
-   
+
+**OSS Architecture**
+
+```mermaid
+graph TD
+    A[Telemetry / Metrics] --> B[Reliability Engine]
+    B --> C[OSSMCPClient]
+    C --> D[RAGGraphMemory]
+    D --> E[FAISS Similarity]
+    D --> F[Incident / Outcome Graph]
+    E --> C
+    F --> C
+    C --> G[HealingIntent]
+    G --> H[STOP: Advisory Only]
+```
+OSS execution halts permanently at HealingIntent. No actions are performed.
+
+### **Stop point:** OSS halts permanently at HealingIntent.
+
+### **ARF v3.0 Dual-Layer Architecture**
+
+```
+          ┌───────────────────────────┐
+          │        Telemetry          │
+          └─────────────┬────────────┘
+                        │
+                        ▼
+  ┌───────────── OSS Layer (Advisory Only) ─────────────┐
+  │                                                     │
+  │  +--------------------+                             │
+  │  | Detection Agent     |  ← Anomaly detection       │
+  │  | (OSS + Enterprise)  |  & forecasting             │
+  │  +--------------------+                             │
+  │           │                                         │
+  │           ▼                                         │
+  │  +--------------------+                             │
+  │  | Recall Agent        |  ← Retrieve similar        │
+  │  | (OSS + Enterprise)  |  incidents/actions/outcomes
+  │  +--------------------+                             │
+  │           │                                         │
+  │           ▼                                         │
+  │  +--------------------+                             │
+  │  | Decision Agent      |  ← Policy reasoning        │
+  │  | (OSS + Enterprise)  |  over historical outcomes  │
+  │  +--------------------+                             │
+  └─────────────────────────┬───────────────────────────┘
+                            │
+                            ▼
+ ┌───────── Enterprise Layer (Full Execution) ─────────┐
+ │                                                     │
+ │  +--------------------+        +-----------------+  │
+ │  | Safety Agent        |  ───> | Execution Agent |  │
+ │  | (Enterprise only)   |       | (MCP modes)     |  │
+ │  +--------------------+        +-----------------+  │
+ │           │                                         │
+ │           ▼                                         │
+ │  +--------------------+                             │
+ │  | Learning Agent      |  ← Extract outcomes,       │
+ │  | (Enterprise only)   |  update RAG & predictive   │
+ │  +--------------------+   models                    │
+ │           │                                         │
+ │           ▼                                         │
+ │       HealingIntent (Executed, Audit-ready)         │
+ └─────────────────────────────────────────────────────┘
+```
+
 ## Core Innovations
 
 ### 1. RAG Graph Memory (Not Vector Soup)
