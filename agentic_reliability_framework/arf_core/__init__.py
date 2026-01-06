@@ -7,7 +7,7 @@ IMPORTANT: This module ONLY exports OSS components - no circular imports
 Enhanced with OSS boundary validation and simplified lazy loading
 """
 
-__version__ = "3.3.5"  # Updated to match package version
+__version__ = "3.3.6"  # FIXED: Updated to match release version v3.3.6
 __all__ = [
     "HealingIntent",
     "HealingIntentSerializer",
@@ -36,18 +36,13 @@ def _validate_oss_import_environment():
     """Validate OSS boundaries at module import time"""
     # Check for environment variables that indicate enterprise mode
     enterprise_vars = [
-        "ARF_LICENSE_KEY",
         "ARF_TIER",
         "ARF_DEPLOYMENT_TYPE",
     ]
     
     for var in enterprise_vars:
         value = os.getenv(var)
-        if value and var == "ARF_LICENSE_KEY":
-            # Check if it's an OSS license indicator
-            if not (value.startswith("oss_") or value == "apache2"):
-                print(f"⚠️  Warning: Non-OSS license key detected: {var}={value[:10]}...")
-        elif value and value.lower() != "oss":
+        if value and value.lower() != "oss":
             print(f"⚠️  Warning: Non-OSS environment variable: {var}={value}")
     
     # Check for test environment to avoid false positives
