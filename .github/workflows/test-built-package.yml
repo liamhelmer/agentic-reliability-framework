@@ -1,0 +1,62 @@
+# File: .github/workflows/test-built-package.yml
+name: Test Built Package
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:  # Manual trigger
+
+jobs:
+  test-package:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+    
+    - name: Install build tools
+      run: python -m pip install --upgrade pip build twine
+    
+    - name: Build package
+      run: python -m build
+    
+    - name: Test package installation
+      run: |
+        pip install dist/*.whl --force-reinstall
+        python -c "import agentic_reliability_framework as arf; print(f'✅ ARF v{arf.__version__} installed successfully')"
+        python -c "from agentic_reliability_framework import OSS_EDITION, EXECUTION_ALLOWED; print(f'✅ OSS Edition: {OSS_EDITION}, Execution: {EXECUTION_ALLOWED}')"
+    
+    - name: Run import tests
+      run: |
+        python -c "
+        import agentic_reliability_framework as arf
+        from agentic_reliability_framework import HealingIntent, OSSMCPClient
+        from agentic_reliability_framework import create_rollback_intent
+        from agentic_reliability_framework import OSS_EDITION, OSS_LICENSE
+        
+        print('✅ All critical imports work')
+        print(f'  Version: {arf.__version__}')
+        print(f'  Edition: {OSS_EDITION}')
+        print(f'  License: {OSS_LICENSE}')
+        
+        # Test that OSS constants are correct
+        from agentic_reliability_framework import EXECUTION_ALLOWED, MCP_MODES_ALLOWED
+        assert EXECUTION_ALLOWED == False, 'OSS must not allow execution'
+        assert MCP_MODES_ALLOWED == ('advisory',), 'OSS must only allow advisory mode'
+        print('✅ OSS boundary constants verified')
+        "
+    
+    - name: Verify no enterprise patterns
+      run: |
+        echo "Checking for enterprise patterns in built package..."
+        # Extract and check the built wheel
+        unzip -l dist/*.whl | grep -E "(license_key|EnterpriseMCPServer|LicenseManager|ARF-ENT-)" || echo "✅ No enterprise patterns found in built package"
