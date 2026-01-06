@@ -7,7 +7,7 @@ IMPORTANT: This module ONLY exports OSS components - no circular imports
 Enhanced with OSS boundary validation and simplified lazy loading
 """
 
-__version__ = "3.3.6"  # FIXED: Updated to match release version v3.3.6
+__version__ = "3.3.7"
 __all__ = [
     "HealingIntent",
     "HealingIntentSerializer",
