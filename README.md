@@ -305,37 +305,6 @@ graph TB
 
 Healing Actions occur only in Enterprise deployments.
 
-### OSS Architecture
-
-```mermaid
-graph TD
-    A[Telemetry / Metrics] --> B[Reliability Engine]
-    B --> C[OSSMCPClient]
-    C --> D[RAGGraphMemory]
-    D --> E[FAISS Similarity]
-    D --> F[Incident / Outcome Graph]
-    E --> C
-    F --> C
-    C --> G[HealingIntent]
-    G --> H[STOP: Advisory Only]
-```
-
-OSS execution halts permanently at HealingIntent. No actions are performed.
-
-### **Stop point:** OSS halts permanently at HealingIntent.
-
-### Enterprise Architecture
-
-```mermaid
-graph TD
-    A[HealingIntent] --> B[License Manager]
-    B --> C[Feature Gating]
-    C --> D[Neo4j + FAISS]
-    D --> E[GNN Analytics]
-    E --> F[MCP Execution]
-    F --> G[Audit Trail]
-```
-
 **Architecture Philosophy**: Each layer addresses a critical failure mode of current AI systems: 
 
 1.  **Cognitive Layer** prevents _"reasoning from scratch"_ for each incident 
@@ -442,11 +411,6 @@ graph LR
 
 # Multi-Agent Design (ARF v3.0) – Coverage Overview
 
-## Agent Scope Diagram
-OSS: [Detection] [Recall] [Decision]
-Enterprise: [Detection] [Recall] [Decision] [Safety] [Execution] [Learning]
-
-
 - **Detection, Recall, Decision** → present in both OSS and Enterprise  
 - **Safety, Execution, Learning** → Enterprise only  
 
@@ -460,53 +424,6 @@ Enterprise: [Detection] [Recall] [Decision] [Safety] [Execution] [Learning]
 | Safety Agent    | Enforce guardrails, circuit breakers, compliance constraints          | ❌  | ✅         |
 | Execution Agent | Execute HealingIntents according to MCP modes (advisory/approval/autonomous) | ❌  | ✅         |
 | Learning Agent  | Extract outcomes and update predictive models / RAG patterns          | ❌  | ✅         |
-
-# ARF v3.0 Dual-Layer Architecture
-
-```
-          ┌───────────────────────────┐
-          │        Telemetry          │
-          └─────────────┬────────────┘
-                        │
-                        ▼
-  ┌───────────── OSS Layer (Advisory Only) ─────────────┐
-  │                                                     │
-  │  +--------------------+                             │
-  │  | Detection Agent     |  ← Anomaly detection       │
-  │  | (OSS + Enterprise)  |  & forecasting             │
-  │  +--------------------+                             │
-  │           │                                         │
-  │           ▼                                         │
-  │  +--------------------+                             │
-  │  | Recall Agent        |  ← Retrieve similar        │
-  │  | (OSS + Enterprise)  |  incidents/actions/outcomes
-  │  +--------------------+                             │
-  │           │                                         │
-  │           ▼                                         │
-  │  +--------------------+                             │
-  │  | Decision Agent      |  ← Policy reasoning        │
-  │  | (OSS + Enterprise)  |  over historical outcomes  │
-  │  +--------------------+                             │
-  └─────────────────────────┬───────────────────────────┘
-                            │
-                            ▼
- ┌───────── Enterprise Layer (Full Execution) ─────────┐
- │                                                     │
- │  +--------------------+        +-----------------+  │
- │  | Safety Agent        |  ───> | Execution Agent |  │
- │  | (Enterprise only)   |       | (MCP modes)     |  │
- │  +--------------------+        +-----------------+  │
- │           │                                         │
- │           ▼                                         │
- │  +--------------------+                             │
- │  | Learning Agent      |  ← Extract outcomes,       │
- │  | (Enterprise only)   |  update RAG & predictive   │
- │  +--------------------+   models                    │
- │           │                                         │
- │           ▼                                         │
- │       HealingIntent (Executed, Audit-ready)         │
- └─────────────────────────────────────────────────────┘
-```
 
 ---
 
