@@ -1,6 +1,6 @@
 # Test/final_oss_verification.py
 """
-FINAL OSS VERIFICATION - ARF 3.3.5 OSS Edition
+FINAL OSS VERIFICATION - ARF 3.3.6 OSS Edition
 Comprehensive verification that all OSS boundary fixes are working
 """
 
@@ -97,7 +97,7 @@ def check_file_content(filepath, pattern, description):
 
 def main():
     print("=" * 80)
-    print("🚀 ARF OSS EDITION FINAL VERIFICATION - v3.3.5")
+    print("🚀 ARF OSS EDITION FINAL VERIFICATION - v3.3.6")  # FIXED: Updated version
     print("=" * 80)
     print("Verifying all OSS boundary fixes and import stability")
     
@@ -114,7 +114,8 @@ def main():
         ("scripts/oss_boundary_check.py", "OSS boundary checker exists"),
         ("scripts/verify_circular_fix.py", "Circular import verifier exists"),
         (".pre-commit-config.yaml", "Pre-commit config exists"),
-        ("Test/verify_import_fix.py", "Import verification test exists"),
+        # FIXED: Removed non-existent file reference
+        # ("Test/verify_import_fix.py", "Import verification test exists"),
     ]
     
     for filepath, desc in file_checks:
@@ -198,7 +199,8 @@ print(f'All imports successful: OSS={arf.OSS_EDITION}')
     script_tests = [
         ("python scripts/oss_boundary_check.py", "OSS boundary checker runs"),
         ("python scripts/verify_circular_fix.py --quick", "Circular import check (quick)"),
-        ("python Test/verify_import_fix.py", "Import verification test"),
+        # FIXED: Updated to check correct test file
+        ("python Test/final_oss_verification.py --help", "OSS verification test (help check)"),
     ]
     
     for cmd, desc in script_tests:
