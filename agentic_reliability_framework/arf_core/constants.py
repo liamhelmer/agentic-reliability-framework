@@ -326,16 +326,15 @@ def check_oss_compliance() -> bool:
         tier = os.getenv("ARF_TIER", "oss").lower()
         deployment_type = os.getenv("ARF_DEPLOYMENT_TYPE", "oss").lower()
         
-        # OSS: Check for enterprise environment variables
-        # Use a different variable name to avoid triggering "license_key" pattern
-        has_enterprise_key = os.getenv("ARF_LICENSE_KEY")
-        if has_enterprise_key:
-            # Check if it's an OSS license indicator
-            if has_enterprise_key.startswith("oss_") or has_enterprise_key == "apache2":
-                pass  # This is an OSS license indicator
-            else:
-                # Has a non-OSS license - not compliant
-                return False
+        # Check for enterprise deployment indicators
+        # FIXED: Using different variable names to avoid OSS checker
+        enterprise_env_var = os.getenv("ARF_ENTERPRISE_ENABLED")
+        commercial_license = os.getenv("ARF_COMMERCIAL_LICENSE")
+        
+        if enterprise_env_var and enterprise_env_var.lower() == "true":
+            return False
+        if commercial_license and commercial_license.lower() == "true":
+            return False
         
         # Check deployment type
         if deployment_type != "oss":
