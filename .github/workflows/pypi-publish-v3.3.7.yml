@@ -1,11 +1,16 @@
-# File: .github/workflows/pypi-publish-v3.3.7.yml
 name: Publish v3.3.7 to PyPI
 
 on:
   workflow_dispatch:  # Manual trigger for control
+    inputs:
+      confirm:
+        description: 'Type "yes" to confirm publish to PyPI'
+        required: true
+        default: 'no'
 
 jobs:
   verify-and-publish:
+    if: github.event.inputs.confirm == 'yes'
     runs-on: ubuntu-latest
     environment: pypi
     
