@@ -74,3 +74,79 @@ def main():
             
             # Show key output
             if result.stdout:
+                lines = result.stdout.split('\n')
+                for line in lines[-5:]:  # Last 5 lines
+                    if line.strip():
+                        print(f"   {line}")
+            
+            results.append({
+                "name": name,
+                "script": script,
+                "passed": passed,
+                "returncode": result.returncode,
+                "output": result.stdout[-500:] if result.stdout else "",
+            })
+            
+        except subprocess.TimeoutExpired:
+            print("   ⏰ TIMEOUT")
+            all_passed = False
+            results.append({
+                "name": name,
+                "script": script,
+                "passed": False,
+                "error": "Timeout",
+            })
+        except Exception as e:
+            print(f"   💥 ERROR: {e}")
+            all_passed = False
+            results.append({
+                "name": name,
+                "script": script,
+                "passed": False,
+                "error": str(e),
+            })
+    
+    # Final report
+    print("\n" + "=" * 50)
+    print("📋 FINAL REPORT")
+    print("=" * 50)
+    
+    passed_count = sum(1 for r in results if r.get("passed", False))
+    total_count = len(results)
+    
+    print(f"\nTests Run: {total_count}")
+    print(f"Tests Passed: {passed_count}")
+    print(f"Tests Failed: {total_count - passed_count}")
+    
+    if all_passed:
+        print("\n🎉 ALL V3 VALIDATIONS PASSED!")
+        print("\nThe system is V3 compliant with:")
+        print("  • Mechanical OSS/Enterprise boundaries")
+        print("  • Proper execution ladder enforcement")
+        print("  • License-based feature gating")
+        print("  • Mandatory rollback analysis")
+        
+        if args.certify:
+            cert_path = Path(__file__).parent.parent / "V3_COMPLIANCE_CERTIFICATION.json"
+            print(f"\n📄 V3 Certification: {cert_path}")
+        
+        sys.exit(0)
+    else:
+        print("\n🚨 V3 VALIDATION FAILURES DETECTED")
+        print("\nFailed tests:")
+        for result in results:
+            if not result.get("passed", False):
+                print(f"  • {result['name']} ({result['script']})")
+                if result.get("error"):
+                    print(f"    Error: {result['error']}")
+        
+        print("\n🔧 Next steps:")
+        print("  1. Check individual script outputs above")
+        print("  2. Run scripts individually for detailed output")
+        print("  3. Fix boundary violations before release")
+        
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
