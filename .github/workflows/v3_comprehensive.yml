@@ -1,0 +1,92 @@
+name: V3 Comprehensive Validation
+
+on:
+  workflow_dispatch:
+    inputs:
+      validation_level:
+        description: 'Validation Level'
+        required: true
+        default: 'certification'
+        type: choice
+        options:
+        - quick
+        - comprehensive
+        - certification
+
+jobs:
+  v3-validation:
+    name: V3 Comprehensive Validation
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip setuptools wheel
+        pip install pytest
+        
+    - name: Run quick V3 test
+      run: |
+        echo "=== QUICK V3 TEST ==="
+        python scripts/test_v3_quick.py
+    
+    - name: Run check_v3_status.py
+      run: |
+        echo "=== RUNNING check_v3_status.py ==="
+        python scripts/check_v3_status.py
+    
+    - name: Run enhanced V3 boundary check (if comprehensive or certification)
+      if: ${{ inputs.validation_level == 'comprehensive' || inputs.validation_level == 'certification' }}
+      run: |
+        echo "=== RUNNING enhanced_v3_boundary_check.py ==="
+        python scripts/enhanced_v3_boundary_check.py
+    
+    - name: Run comprehensive V3 validation (if certification)
+      if: ${{ inputs.validation_level == 'certification' }}
+      run: |
+        echo "=== RUNNING run_v3_validation.py --certify ==="
+        python scripts/run_v3_validation.py --certify
+    
+    - name: Check generated files
+      if: ${{ inputs.validation_level == 'certification' }}
+      run: |
+        echo "=== CHECKING GENERATED FILES ==="
+        echo "Current directory: $(pwd)"
+        echo ""
+        echo "Files matching V3_*.json:"
+        find . -name "V3_*.json" -type f 2>/dev/null | sort || echo "No V3 files found"
+        
+        echo ""
+        if [ -f "V3_COMPLIANCE_CERTIFICATION.json" ]; then
+          echo "✅ V3_COMPLIANCE_CERTIFICATION.json FOUND"
+          echo "First 5 lines:"
+          head -5 V3_COMPLIANCE_CERTIFICATION.json
+        else
+          echo "❌ V3_COMPLIANCE_CERTIFICATION.json NOT FOUND"
+        fi
+        
+        echo ""
+        if [ -f "V3_COMPLIANCE_ISSUES.json" ]; then
+          echo "⚠️  V3_COMPLIANCE_ISSUES.json FOUND"
+          echo "First 5 lines:"
+          head -5 V3_COMPLIANCE_ISSUES.json
+        fi
+    
+    - name: Upload artifacts
+      if: ${{ always() && inputs.validation_level == 'certification' }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: v3-validation-artifacts
+        path: |
+          V3_COMPLIANCE_CERTIFICATION.json
+          V3_COMPLIANCE_ISSUES.json
+        retention-days: 30
