@@ -148,7 +148,6 @@ def get_oss_capabilities() -> Dict[str, Any]:
     }
 
 
-# oss/constants.py - FIXED version
 def check_oss_compliance() -> bool:
     """
     Check if current runtime is OSS compliant
@@ -162,13 +161,10 @@ def check_oss_compliance() -> bool:
         if tier != "oss":
             return False
         
-        # FIXED: Don't assign license key, just check if it exists
-        # Check if any license key is present (should not be in OSS)
-        if os.getenv("ARF_LICENSE_KEY"):
-            # Check if it's an Enterprise license
-            license_value = os.getenv("ARF_LICENSE_KEY", "")
-            if license_value.startswith("ARF-ENT-") or license_value.startswith("ARF-TRIAL-"):
-                return False
+        # Check license
+        license_key = os.getenv("ARF_LICENSE_KEY", "")
+        if license_key.startswith("ARF-ENT-") or license_key.startswith("ARF-TRIAL-"):
+            return False
         
         return True
     except Exception:  # Changed from bare except
