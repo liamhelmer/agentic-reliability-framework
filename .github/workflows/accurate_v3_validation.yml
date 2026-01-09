@@ -27,20 +27,19 @@ jobs:
         python -m pip install --upgrade pip setuptools wheel
         pip install -e .
     
-    - name: Run Simple V3 Check
-      id: validation
+    - name: Create Simple Validator Script
       run: |
-        echo "======================================================================"
-        echo "✅ SIMPLE V3 BOUNDARY CHECK"
-        echo "Only checks for REAL violations, no false positives"
-        echo "======================================================================"
-        echo ""
-        
-        # Create a simple Python check
-        python3 << 'EOF'
+        echo "Creating simple_v3_check.py..."
+        cat > /tmp/simple_v3_check.py << 'PYTHON_EOF'
 import re
 import os
 import sys
+
+print("======================================================================")
+print("✅ SIMPLE V3 BOUNDARY CHECK")
+print("Only checks for REAL violations, no false positives")
+print("======================================================================")
+print("")
 
 print("🔍 Checking for REAL V3 violations only...")
 print("=" * 60)
@@ -147,7 +146,14 @@ else:
         print("  • Enterprise MCP modes found in OSS code")
     print("\n🔧 Please check these files carefully.")
     sys.exit(1)
-EOF
+PYTHON_EOF
+
+        echo "✅ Created validator script"
+    
+    - name: Run Simple V3 Check
+      id: validation
+      run: |
+        python /tmp/simple_v3_check.py
         
         echo ""
         echo "======================================================================"
