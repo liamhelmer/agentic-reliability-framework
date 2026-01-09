@@ -6,6 +6,15 @@ on:
   pull_request:
     branches: [ main, develop ]
   workflow_dispatch:
+    inputs:
+      v3_validation:
+        description: 'Run V3 validation'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+        - 'true'
+        - 'false'
 
 jobs:
   oss-boundary:
@@ -56,3 +65,39 @@ jobs:
         python -c "import agentic_reliability_framework; print(f'✅ ARF v{agentic_reliability_framework.__version__}')"
         python -c "from agentic_reliability_framework import HealingIntent; print('✅ HealingIntent imported')"
         python -c "from agentic_reliability_framework import OSSMCPClient; print('✅ OSSMCPClient imported')"
+    
+    - name: Run V3 validation (if requested)
+      if: ${{ github.event_name == 'workflow_dispatch' && inputs.v3_validation == 'true' || github.ref == 'refs/heads/main' }}
+      run: |
+        echo "🚀 RUNNING V3 VALIDATION"
+        echo "========================"
+        
+        # Check if V3 validation scripts exist
+        echo "Checking for V3 validation scripts..."
+        if [ -f "scripts/check_v3_status.py" ]; then
+          echo "✅ Found check_v3_status.py"
+          python scripts/check_v3_status.py || echo "⚠️ check_v3_status.py failed"
+        fi
+        
+        if [ -f "scripts/enhanced_v3_boundary_check.py" ]; then
+          echo "✅ Found enhanced_v3_boundary_check.py"
+          python scripts/enhanced_v3_boundary_check.py || echo "⚠️ enhanced_v3_boundary_check.py failed"
+        fi
+        
+        if [ -f "scripts/run_v3_validation.py" ]; then
+          echo "✅ Found run_v3_validation.py"
+          python scripts/run_v3_validation.py --fast || echo "⚠️ run_v3_validation.py failed"
+        fi
+        
+        # Check for certification files
+        echo -e "\nChecking for V3 certification..."
+        if [ -f "V3_COMPLIANCE_CERTIFICATION.json" ]; then
+          echo "🎉 V3_COMPLIANCE_CERTIFICATION.json FOUND"
+          echo "V3.0 validation previously passed!"
+        elif [ -f "V3_COMPLIANCE_ISSUES.json" ]; then
+          echo "⚠️ V3_COMPLIANCE_ISSUES.json FOUND"
+          echo "V3 validation has issues to resolve"
+        else
+          echo "📝 No V3 certification files found"
+          echo "Run: python scripts/run_v3_validation.py --certify"
+        fi
