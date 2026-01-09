@@ -36,7 +36,7 @@ This document defines the mechanically enforceable boundary between ARF OSS (Apa
 
 ### 2.1 Build-Time Validation Results
 
-```
+```python
 VALIDATION RUN: $(date)
 REPOSITORY: agentic-reliability-framework
 FILES ANALYZED: 95 Python files
@@ -118,7 +118,7 @@ Every novel execution path must:
 
 ### 4.1 Continuous Validation
 
-```
+```python
 # .github/workflows/accurate_v3_validation.yml
 name: Accurate V3 Validation
 on: [push, pull_request, workflow_dispatch]
@@ -132,7 +132,7 @@ steps:
 
 ### 4.2 Boundary Test Suite
 
-```
+```python
 # tests/test_v3_boundaries.py
 def test_oss_no_execution():
     """OSS cannot execute - validated"""
@@ -150,7 +150,7 @@ def test_license_checking_valid():
 
 ### 5.1 OSS → Enterprise Evaluation
 
-```
+```python
 Phase 1: OSS Evaluation (Safe)
   - Full advisory intelligence
   - Zero production risk
@@ -167,15 +167,16 @@ Phase 3: Enterprise Deployment
   - Compliance reporting
 ```
 
-### 5.2 Feature Graduation Matrix
+## 5.2 Feature Graduation Matrix
 
-Feature	OSS (v3.0)	Enterprise (v3.1)	Enterprise+ (v3.2+)
-Advisory Intelligence	✅ Full	✅ Full	✅ Enhanced
-Execution Capability	❌ None	✅ Permissioned	✅ Risk-Bounded
-Rollback Planning	Read-only	✅ Mandatory	✅ Automated
-Learning Loop	❌ None	✅ Basic	✅ Adaptive
-Storage	1k incidents	Unlimited	Multi-tenant
-Audit Trails	Basic	✅ Exportable	✅ Real-time
+| Feature | OSS (v3.0) | Enterprise (v3.1) | Enterprise+ (v3.2+) |
+|--------|------------|-------------------|---------------------|
+| Advisory Intelligence | ✅ Full | ✅ Full | ✅ Enhanced |
+| Execution Capability | ❌ None | ✅ Permissioned | ✅ Risk-Bounded |
+| Rollback Planning | Read-only | ✅ Mandatory | ✅ Automated |
+| Learning Loop | ❌ None | ✅ Basic | ✅ Adaptive |
+| Storage | In-memory (1k incidents) | Unlimited | Unlimited (Multi-tenant) |
+| Audit Trails | Basic | ✅ Exportable | ✅ Real-time |
 
 6\. COMPLIANCE & CERTIFICATION
 ------------------------------
@@ -184,7 +185,7 @@ Audit Trails	Basic	✅ Exportable	✅ Real-time
 
 Third parties can verify the split using:
 
-```
+```python
 # Run validation independently
 git clone https://github.com/petterjuan/agentic-reliability-framework
 python -m pytest tests/test_v3_boundaries.py -v
@@ -231,7 +232,7 @@ New features must:
 
 ### 8.1 False Positive Breakdown
 
-```
+```python
 File: scripts/enhanced_v3_boundary_check.py
 Issue: Pattern documentation (not violation)
 Resolution: Validation scripts excluded from checks
@@ -243,7 +244,7 @@ Resolution: VALID - inside check_oss_compliance()
 
 ### 8.2 Mechanical Enforcement Code
 
-```
+```python
 # Build-time enforcement
 if "license_key =" in line and "check_oss_compliance" not in context:
     raise V3BoundaryError("License assignment outside compliance check")
