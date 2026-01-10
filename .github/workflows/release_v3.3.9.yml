@@ -67,7 +67,7 @@ jobs:
           echo "Token exists: ${{ secrets.PYPI_API_TOKEN != '' }}"
           
           # Upload with retry
-          python -m twine upload dist/* || \
+          python -m twine upload dist/* || \ --skip-existing
           (echo "⚠️ First attempt failed, retrying..." && \
            python -m twine upload dist/* --verbose)
           
