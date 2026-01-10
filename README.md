@@ -102,6 +102,50 @@ The open-source edition of the Agentic Reliability Framework is designed for **a
     
 *   **In-Memory Operation Only**Operates entirely in memory with bounded retention suitable for development, research, and evaluation use cases.
     
+### 💡 How ARF OSS Adds Value Today
+
+**OSS Advisory Flow (Advisory-Only)**
+
+```mermaid
+flowchart LR
+    A[Detection 🟢 OSS] --> B[Recall 🟢 OSS]
+    B --> C[Decision 🟢 OSS]
+    C --> D[HealingIntent 🟢 OSS]
+    D --> E[Execution 🔵 Enterprise Only]
+
+    %% Optional: Dashed line for Enterprise-only node
+    E -.->|Enterprise-only| D
+
+```
+
+**Key:** 
+**🟢 Green = OSS Advisory Capabilities**
+**🔵 Blue = Enterprise Execution (not included in OSS)**
+
+*   **Detection** – Identify anomalies and operational events in real time
+    
+*   **Recall** – Retrieve historical incidents and context for informed reasoning
+    
+*   **Decision** – Apply deterministic, explainable rules for advisory guidance
+    
+*   **HealingIntent** – Generate structured, safe remediation recommendations
+    
+*   **Execution** – Enterprise-only; OSS stops before this step
+
+| Feature                                  | OSS 🟢 | Enterprise 🔵 |
+| ---------------------------------------- | :----: | :-----------: |
+| Detection & Anomaly Monitoring           |    ✅   |       ✅       |
+| Historical Recall & RAG Context          |    ✅   |       ✅       |
+| Deterministic Decision Policies          |    ✅   |       ✅       |
+| Advisory Remediation Plans               |    ✅   |       ✅       |
+| Autonomous Execution                     |    ❌   |       ✅       |
+| Learning & Self-Optimization Loops       |    ❌   |       ✅       |
+| Persistent Storage & Memory              |    ❌   |       ✅       |
+| Compliance & Audit Workflows             |    ❌   |       ✅       |
+| Multi-Tenant Control / Scoped Operations |    ❌   |       ✅       |
+| Business Impact Measurement & Analytics  |    ❌   |       ✅       |
+
+>Quick visual reference for OSS vs Enterprise capabilities. OSS delivers full intelligence, stopping safely at advisory intent, while Enterprise extends that intelligence to execution and outcome optimization.
 
 ### Explicit OSS Constraints (By Design)
 
