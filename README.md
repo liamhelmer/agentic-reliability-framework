@@ -146,6 +146,8 @@ The open-source edition of the Agentic Reliability Framework is designed for **a
 
 **Enterprise Edition (Commercial)**
 
+> The Enterprise Edition of ARF transforms advisory intelligence into governed, auditable execution at scale.
+
 **Enterprise Edition (Commercial)** The Enterprise Edition of ARF transforms advisory intelligence into **governed, production-grade execution**. It introduces permissioned remediation workflows, persistent organizational memory, outcome-aware optimization, and compliance-aligned controls—while preserving strict safety boundaries and human oversight. Enterprise deployments are designed for reliability teams operating at scale, where **predictable execution, auditability, and measurable business outcomes** are required. Execution, learning, analytics, and compliance capabilities are available exclusively under a commercial license.
 
 **️ Why Choose ARF Over Alternatives**
