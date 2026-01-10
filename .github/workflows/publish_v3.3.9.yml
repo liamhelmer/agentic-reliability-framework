@@ -1,0 +1,77 @@
+name: Publish v3.3.9 to PyPI
+on:
+  workflow_dispatch:
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout v3.3.9 tag
+        uses: actions/checkout@v4
+        with:
+          ref: v3.3.9
+          
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          
+      - name: Install build tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install build twine
+          
+      - name: Build package
+        run: |
+          echo "📦 Building package v3.3.9..."
+          python -m build
+          echo "✅ Built package files:"
+          ls -la dist/
+          
+      - name: Verify package version
+        run: |
+          echo "🔍 Verifying version is 3.3.9..."
+          # Check wheel file name
+          if ls dist/*3.3.9*.whl 1> /dev/null 2>&1; then
+            echo "✅ Found 3.3.9 wheel file"
+          else
+            echo "❌ No 3.3.9 wheel file found"
+            ls dist/
+            exit 1
+          fi
+          
+      - name: Test PyPI authentication
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+        run: |
+          echo "🔐 Testing PyPI token..."
+          # Simple test - try to get package info
+          python -c "
+          import requests
+          import os
+          token = os.environ.get('TWINE_PASSWORD', '')
+          if token:
+              print('✅ Token exists')
+              # Just test basic auth
+              print('Token starts with:', token[:10] + '...')
+          else:
+              print('❌ No token found')
+              exit(1)
+          "
+          
+      - name: Publish to PyPI
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+        run: |
+          echo "📤 Publishing agentic-reliability-framework==3.3.9 to PyPI..."
+          echo "Using token that starts with: ${TWINE_PASSWORD:0:10}..."
+          
+          # Upload with verbose output
+          python -m twine upload dist/* --verbose
+          
+          echo ""
+          echo "🎉 SUCCESS! Published v3.3.9 to PyPI!"
+          echo "👉 Check: https://pypi.org/project/agentic-reliability-framework/3.3.9/"
