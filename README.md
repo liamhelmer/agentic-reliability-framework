@@ -99,25 +99,91 @@ ARF collapses that gap by providing a hybrid intelligence system that advises sa
 
 ## 🎯 What This Actually Does
 
-**OSS**
-- Ingests telemetry and incident context
-- Recalls similar historical incidents (FAISS + graph)
-- Applies deterministic safety policies
-- Creates an immutable HealingIntent **without executing remediation**
-- **Never executes actions (advisory-only, permanently)**
+🎯 What This Actually Does (OSS Edition)
+----------------------------------------
 
-**Enterprise**
-- Validates license and usage
-- Applies approval / autonomous policies
-- Executes actions via MCP
-- Persists learning and audit trails
+**Agentic Reliability Framework — OSS (Apache 2.0)**
 
-**Both**
-- Thread-safe
-- Circuit-breaker protected
-- Deterministic, idempotent intent model
+The OSS edition of ARF is a **deterministic, advisory-only reliability intelligence engine**. It analyzes incidents, recalls historical patterns, applies safety constraints, and produces immutable healing plans — **without ever executing actions**.
 
----
+### Core Capabilities
+
+*   **Telemetry & Incident Ingestion**Processes reliability events and incident context through the V3ReliabilityEngine, using configurable thresholds and signal normalization.
+    
+*   **Multi-Agent Analysis Pipeline**Orchestrates specialized agents (e.g. detection, diagnosis, prediction) to investigate root cause, contributing factors, and likely outcomes.
+    
+*   **RAG Graph Memory (In-Memory)**Stores incidents, actions, and outcomes in an in-memory knowledge graph, augmented with FAISS vector similarity search.
+    
+*   **Historical Similarity Recall**Retrieves past incidents using cosine similarity over FAISS embeddings (IVF indexing) to surface comparable failure patterns.
+    
+*   **Healing Intent Generation (Immutable)**Produces a HealingIntent object containing:
+    
+    *   Recommended remediation steps
+        
+    *   Risk and blast-radius analysis
+        
+    *   Business impact estimates
+        
+    *   Policy validation resultsThese objects are **read-only and non-executable**.
+        
+*   **Deterministic Policy & Safety Engine**Applies hard guardrails via safety evaluation logic, including:
+    
+    *   Blast-radius limits
+        
+    *   Cooldown enforcement
+        
+    *   Business-hour restrictions
+        
+    *   Action blacklists
+        
+    *   Circuit-breaker checks
+        
+*   **Advisory-Only MCP Interface**Exposes an MCP-compatible interface that returns **analysis and intent only**, never execution. This boundary is enforced at the code level.
+    
+*   **Business Impact Estimation**Calculates potential revenue, user, or SLA impact using configurable monetization and cost models.
+    
+
+### Hard Execution Boundary (Enforced)
+
+The OSS edition **cannot and will not execute remediation actions**. All execution requests terminate at the advisory layer.
+
+```python
+# OSS always returns this structure for execution requests
+{
+    "requires_enterprise": True,
+    "message": "Advisory analysis complete. Enterprise license required for execution.",
+    "analysis": {...},  # Full what-if analysis
+    "healing_intent": {...}  # Complete execution plan (requires Enterprise)
+}
+```
+
+This behavior is **non-configurable** in OSS.
+
+### Memory & Decision Flow
+
+```
+ReliabilityEvent → FAISS Embedding → Graph Node
+     ↓
+Historical Pattern Recall → Success Probability Scoring
+     ↓
+Policy Evaluation → HealingIntent Creation
+     ↓
+[STOP: OSS Boundary] → [Enterprise Execution]
+```
+
+### Architectural Guarantees
+
+*   **Advisory-Only by Design** — no hidden execution paths
+    
+*   **Deterministic & Explainable** — no silent learning loops
+    
+*   **Thread-Safe & Production-Ready**
+    
+*   **Configuration-Driven Behavior** via OSSConfig
+    
+*   **Type-Safe APIs** using Pydantic v2 and Python 3.10+
+    
+*   **Extensible Agent Architecture** with explicit interfaces
 
 > Execution, persistence, and autonomous actions are exclusive to Enterprise.
 
