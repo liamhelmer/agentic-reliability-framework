@@ -145,7 +145,7 @@ flowchart LR
 | Multi-Tenant Control / Scoped Operations |    ❌   |       ✅       |
 | Business Impact Measurement & Analytics  |    ❌   |       ✅       |
 
->Quick visual reference for OSS vs Enterprise capabilities. OSS delivers full intelligence, stopping safely at advisory intent, while Enterprise extends that intelligence to execution and outcome optimization.
+> Quick visual reference for OSS vs Enterprise capabilities. OSS delivers full intelligence, stopping safely at advisory intent, while Enterprise extends that intelligence to execution and outcome optimization.
 
 ### Explicit OSS Constraints (By Design)
 
@@ -196,21 +196,20 @@ flowchart LR
 
 | Solution               | Intelligence                      | Safety                    | Determinism | Execution |
 | ---------------------- | --------------------------------- | ------------------------- | ----------- | --------- |
-| **ARF (OSS)**          | Context-aware analysis            | High (advisory-only)      | High        | ❌         |
-| **ARF (Enterprise)**   | Advanced reliability intelligence | High (governed execution) | High        | ✅         |
+| 🟢 ARF (OSS)           | Context-aware analysis            | High (advisory-only)      | High        | ❌         |
+| 🔵 ARF (Enterprise)    | Advanced reliability intelligence | High (governed execution) | High        | ✅         |
 | Traditional Monitoring | Alert-based                       | High                      | High        | ❌         |
 | LLM-Only Agents        | Heuristic                         | Low                       | Low         | ⚠️        |
+
 
 **Governed execution modes (Enterprise-only)**Enterprise deployments support multiple permissioned execution configurations with varying levels of human oversight. Specific modes, controls, and workflows are not part of the OSS distribution.
 
 **Migration Paths**
 
-| Current Solution      | Migration Strategy                           | Expected Benefit                                      |
-|----------------------|---------------------------------------------|------------------------------------------------------|
-| **Traditional Monitoring** | Layer ARF on top for predictive insights      | Shift from reactive to proactive with 6x faster detection |
-| **LLM-Only Agents**       | Replace with ARF's MCP boundary for safety   | Maintain AI capabilities while adding reliability guarantees |
-| **Rule-Based Automation** | Enhance with ARF's learning and context     | Transform brittle scripts into adaptive, learning systems |
-| **Manual Operations**     | Start with ARF in Advisory mode              | Reduce toil while maintaining control during transition |
+| Current Solution       | Migration Strategy                       | Expected Benefit                                          | Applies To |
+| ---------------------- | ---------------------------------------- | --------------------------------------------------------- | ---------- |
+| Traditional Monitoring | Layer ARF on top for predictive insights | Shift from reactive to proactive with 6x faster detection | 🔵         |
+| Manual Operations      | Start with ARF in Advisory mode          | Reduce toil while maintaining control during transition   | 🟢         |
 
 **Decision Framework** 
 
@@ -246,12 +245,14 @@ _ARF provides the intelligence of AI agents with the reliability of traditional 
 
 ## Conceptual Architecture (Mental Model)
 
+```mermaid
+flowchart LR
+    A[Detection 🟢 OSS] --> B[Recall 🟢 OSS]
+    B --> C[Decision 🟢 OSS]
+    C --> D[HealingIntent 🟢 OSS]
+    D --> E[Execution 🔵 Enterprise Only]
+
 ```
-Signals → Analysis → Memory → Intent
-                     ↓
-                Human Decision
-```
-**OSS stops permanently at intent generation.**
 
 **Key insight:** Reliability improves when systems *remember*.
 
@@ -263,9 +264,8 @@ Signals → Analysis → Memory → Intent
     
 3.  **Execution Layer** prevents _"unsafe, unconstrained actions"_
 
-### **Stop point:** OSS halts permanently at HealingIntent.
 
-### 2. Healing Intent Boundary
+### Healing Intent Boundary
 
 OSS **creates** intent.  
 Enterprise **executes** intent. The framework **separates intent creation from execution**
@@ -300,13 +300,12 @@ Enterprise **executes** intent. The framework **separates intent creation from e
 - **Detection, Recall, Decision** → present in both OSS and Enterprise  
 - **Safety, Execution, Learning** → Enterprise only  
 
-## Table View
+| Agent           | Responsibility                                                       | 🟢 OSS | 🔵 Enterprise |
+| --------------- | -------------------------------------------------------------------- | :----: | :-----------: |
+| Detection Agent | Detect anomalies, monitor telemetry, perform time-series forecasting |    ✅   |       ✅       |
+| Recall Agent    | Retrieve similar incidents/actions/outcomes from RAG graph + FAISS   |    ✅   |       ✅       |
+| Decision Agent  | Apply deterministic policies, reasoning over historical outcomes     |    ✅   |       ✅       |
 
-| Agent           | Responsibility                                                          | OSS | Enterprise |
-|-----------------|------------------------------------------------------------------------|-----|------------|
-| Detection Agent | Detect anomalies, monitor telemetry, perform time-series forecasting  | ✅  | ✅         |
-| Recall Agent    | Retrieve similar incidents/actions/outcomes from RAG graph + FAISS    | ✅  | ✅         |
-| Decision Agent  | Apply deterministic policies, reasoning over historical outcomes      | ✅  | ✅         |
 ---
 
 ## OSS vs Enterprise Philosophy
