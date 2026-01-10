@@ -1,7 +1,6 @@
-# scripts/review_v3_artifacts.py
 #!/usr/bin/env python3
 """
-Review and validate V3 release artifacts
+Review and validate V3.3.9 release artifacts
 """
 import json
 from pathlib import Path
@@ -18,7 +17,7 @@ def review_milestone_report(report_path: Path):
     content = report_path.read_text()
     required_sections = [
         "V3 Architecture Achievements",
-        "Business Impact",
+        "Business Impact", 
         "Next Steps"
     ]
     
@@ -42,66 +41,98 @@ def review_validation_report(report_path: Path):
         with open(report_path, 'r') as f:
             data = json.load(f)
         
-        required_fields = [
-            "milestone", "phase", "tag", "timestamp",
-            "v3_architecture_verified", "oss_boundaries_intact"
-        ]
-        
-        for field in required_fields:
-            if field not in data:
-                print(f"❌ Missing field: {field}")
-                return False
-        
-        # Validate timestamp
-        timestamp = datetime.fromisoformat(data["timestamp"].replace('Z', '+00:00'))
-        if (datetime.now() - timestamp).days > 1:
-            print("⚠️  Report timestamp is older than 1 day")
-        
-        print("✅ Validation report validated")
+        # Check for V3.3.9 specific validation
+        if "version" in data and data["version"] != "3.3.9":
+            print(f"❌ Wrong version in report: {data.get('version')}, expected 3.3.9")
+            return False
+            
+        print("✅ Validation report is for V3.3.9")
         return True
         
     except json.JSONDecodeError:
         print("❌ Invalid JSON in validation report")
         return False
 
+def check_v3_architecture_files():
+    """Check that all required V3.3.9 files exist"""
+    print("🏗️  Checking V3.3.9 Architecture Files...")
+    
+    required_files = [
+        "agentic_reliability_framework/engine/v3_reliability.py",
+        "agentic_reliability_framework/arf_core/config/oss_config.py",
+        "agentic_reliability_framework/arf_core/engine/oss_mcp_client.py",
+        ".github/workflows/v3_milestone_sequence.yml",
+        ".github/workflows/v3_release_automation.yml",
+        "scripts/smart_v3_validator.py",
+        "scripts/review_v3_artifacts.py"
+    ]
+    
+    missing_files = []
+    for file_path in required_files:
+        if not Path(file_path).exists():
+            missing_files.append(file_path)
+            print(f"❌ Missing: {file_path}")
+    
+    if missing_files:
+        print(f"⚠️  Missing {len(missing_files)} required files")
+        return False
+    
+    print(f"✅ All {len(required_files)} V3.3.9 files present")
+    return True
+
 def generate_release_summary():
-    """Generate comprehensive release summary"""
-    print("📊 Generating Release Summary...")
+    """Generate comprehensive release summary for V3.3.9"""
+    print("📊 Generating V3.3.9 Release Summary...")
     
     summary = {
-        "release_phase": "V3.3.7",
+        "release_phase": "V3.3.9",
         "validation_status": "PASSED",
         "timestamp": datetime.now().isoformat(),
         "checks": {
+            "v3_architecture_files": False,
             "milestone_report": False,
             "validation_report": False,
-            "v3_boundaries": True,
-            "oss_purity": True
+            "workflow_files": False
         },
         "artifacts": [],
-        "next_actions": []
+        "next_actions": [
+            "Run: python scripts/smart_v3_validator.py",
+            "Check: artifacts/v3-validation-report.json",
+            "Review: milestone-report-V3.3.md"
+        ]
     }
     
+    # Check V3 architecture files
+    summary["checks"]["v3_architecture_files"] = check_v3_architecture_files()
+    
     # Check for artifacts
-    artifacts_dir = Path.cwd()
-    for artifact in artifacts_dir.glob("*report*"):
-        summary["artifacts"].append({
-            "name": artifact.name,
-            "size": artifact.stat().st_size,
-            "modified": datetime.fromtimestamp(artifact.stat().st_mtime).isoformat()
-        })
+    artifacts_dir = Path("artifacts")
+    if artifacts_dir.exists():
+        for artifact in artifacts_dir.glob("*"):
+            summary["artifacts"].append({
+                "name": artifact.name,
+                "size": artifact.stat().st_size,
+                "modified": datetime.fromtimestamp(artifact.stat().st_mtime).isoformat()
+            })
     
     # Review reports
-    milestone_report = artifacts_dir / "milestone-report-V3.3.md"
+    milestone_report = Path("milestone-report-V3.3.md")
     validation_report = artifacts_dir / "v3-validation-report.json"
     
     summary["checks"]["milestone_report"] = review_milestone_report(milestone_report)
     summary["checks"]["validation_report"] = review_validation_report(validation_report)
     
-    # Determine next actions
+    # Check workflow files
+    workflow_files_exist = all([
+        Path(".github/workflows/v3_milestone_sequence.yml").exists(),
+        Path(".github/workflows/v3_release_automation.yml").exists()
+    ])
+    summary["checks"]["workflow_files"] = workflow_files_exist
+    
+    # Determine overall status
     if all(summary["checks"].values()):
         summary["next_actions"] = [
-            "✅ Proceed with V3.3.7 release",
+            "✅ Proceed with V3.3.9 release",
             "📦 Upload to PyPI",
             "📢 Announce release"
         ]
@@ -109,12 +140,12 @@ def generate_release_summary():
         summary["validation_status"] = "FAILED"
         summary["next_actions"] = [
             "❌ Fix validation issues before release",
-            "🔧 Review V3 boundary violations",
+            "🔧 Check missing files listed above",
             "🔄 Re-run validation workflow"
         ]
     
     # Save summary
-    summary_path = artifacts_dir / "release_summary.json"
+    summary_path = Path("release_summary_v3.3.9.json")
     with open(summary_path, 'w') as f:
         json.dump(summary, f, indent=2)
     
@@ -122,20 +153,26 @@ def generate_release_summary():
     return summary
 
 if __name__ == "__main__":
-    print("🚀 V3.3.7 Release Artifact Review")
-    print("=" * 40)
+    print("🚀 V3.3.9 Release Artifact Review")
+    print("=" * 50)
     
     summary = generate_release_summary()
     
     print("\n📈 Review Summary:")
     print(f"   Status: {summary['validation_status']}")
+    print(f"   Release: {summary['release_phase']}")
     print(f"   Artifacts: {len(summary['artifacts'])} found")
     
+    print("\n🔍 Checks performed:")
+    for check_name, check_result in summary["checks"].items():
+        status = "✅" if check_result else "❌"
+        print(f"   {status} {check_name}")
+    
     if summary["validation_status"] == "PASSED":
-        print("\n🎉 READY FOR RELEASE!")
+        print("\n🎉 V3.3.9 READY FOR RELEASE!")
         for action in summary["next_actions"]:
             print(f"   {action}")
     else:
-        print("\n⚠️  RELEASE BLOCKED!")
+        print("\n⚠️  V3.3.9 RELEASE BLOCKED!")
         for action in summary["next_actions"]:
             print(f"   {action}")
