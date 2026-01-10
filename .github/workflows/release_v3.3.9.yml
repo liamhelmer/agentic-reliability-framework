@@ -1,0 +1,141 @@
+name: Release v3.3.9
+on:
+  push:
+    tags:
+      - 'v3.3.9'
+  workflow_dispatch:
+
+jobs:
+  validate_and_release:
+    name: Validate and Release v3.3.9
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install build twine
+
+      - name: Run Smart V3 Validator
+        run: |
+          echo "🚀 Running V3.3.9 validation..."
+          python scripts/smart_v3_validator.py
+        
+      - name: Check Validation Results
+        run: |
+          echo "🔍 Checking validation results..."
+          if [ -f "artifacts/v3-validation-report.json" ]; then
+            echo "✅ Validation report found"
+            
+            # Check if validation passed using Python
+            python -c "
+import json
+import sys
+try:
+    with open('artifacts/v3-validation-report.json', 'r') as f:
+        data = json.load(f)
+    
+    print(f'Release Phase: {data.get(\"release_phase\", \"unknown\")}')
+    print(f'Milestone: {data.get(\"milestone\", \"unknown\")}')
+    
+    # Check critical validations
+    checks = [
+        ('v3_architecture_verified', 'V3 Architecture'),
+        ('oss_boundaries_intact', 'OSS Boundaries'),
+        ('documentation_accurate', 'Documentation')
+    ]
+    
+    all_passed = True
+    for check_key, check_name in checks:
+        value = data.get(check_key, False)
+        status = '✅' if value else '❌'
+        print(f'{status} {check_name}: {value}')
+        if not value:
+            all_passed = False
+    
+    if all_passed:
+        print('🎉 All validation checks passed!')
+        sys.exit(0)
+    else:
+        print('❌ Some validation checks failed')
+        sys.exit(1)
+        
+except Exception as e:
+    print(f'❌ Error reading validation report: {e}')
+    sys.exit(1)
+            "
+          else:
+            echo "❌ No validation report found"
+            exit 1
+        
+      - name: Build Package
+        run: |
+          echo "📦 Building package..."
+          python -m build
+          echo "✅ Package built successfully"
+          echo "Package files:"
+          ls -la dist/
+        
+      - name: Verify Package
+        run: |
+          echo "🔍 Verifying package..."
+          python -m twine check dist/*
+          echo "✅ Package verification passed"
+        
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: "V3.3.9 - Documentation Accuracy Fix"
+          body: |
+            ## V3.3.9: Documentation Accuracy Fix
+            
+            ### What's Fixed
+            - Updated all version references from 3.3.7 to 3.3.9 in PyPI README
+            - Corrected installation command: `pip install agentic-reliability-framework==3.3.9`
+            - Updated BibTeX citation to version 3.3.9
+            
+            ### Validation Status
+            ✅ V3 architecture verified
+            ✅ OSS boundaries intact
+            ✅ Documentation accurate (v3.3.9)
+            ✅ All automated checks passing
+            
+            ### Installation
+            ```bash
+            pip install agentic-reliability-framework==3.3.9
+            ```
+            
+            ### Generated Artifacts
+            - V3 validation report (JSON)
+            - Milestone achievement report (Markdown)
+            - Built package files (.whl, .tar.gz)
+            
+            ### Release Automation
+            This release was automated by the V3 milestone sequencing system.
+          files: |
+            dist/*
+            artifacts/*
+          draft: false
+          prerelease: false
+          generate_release_notes: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        
+      - name: Publish to PyPI
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+        run: |
+          echo "📤 Publishing to PyPI..."
+          python -m twine upload dist/*
+          echo "✅ Published to PyPI successfully!"
