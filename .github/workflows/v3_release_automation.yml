@@ -3,10 +3,10 @@ on:
   push:
     tags:
       - 'v3.*.*'
+  workflow_dispatch:
 
 jobs:
-  validate_and_release:
-    name: Validate and Release V3.x
+  release:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -14,40 +14,45 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
       - name: Run Smart V3 Validator
         run: |
           python scripts/smart_v3_validator.py
-          
+        
       - name: Check Validation Results
         run: |
-          echo "Checking validation artifacts..."
           if [ -f "artifacts/v3-validation-report.json" ]; then
             echo "✅ Validation reports found"
             # Check if validation passed
-            VALIDATION_STATUS=$(python -c "import json; data=json.load(open('artifacts/v3-validation-report.json')); print(data.get('oss_boundaries_intact', False))")
-            if [ "$VALIDATION_STATUS" = "True" ]; then
-              echo "✅ V3 validation passed"
-            else
-              echo "❌ V3 validation failed"
-              exit 1
-            fi
-          else
+            python -c "
+            import json
+            data = json.load(open('artifacts/v3-validation-report.json'))
+            if data.get('oss_boundaries_intact', False):
+              print('✅ V3 validation passed')
+            else:
+              print('❌ V3 validation failed')
+              exit(1)
+            "
+          else:
             echo "❌ No validation artifacts found"
             exit 1
-          fi
-          
+        
       - name: Build Package
         run: |
           python -m pip install --upgrade pip
           pip install build twine
           python -m build
-          
+        
       - name: Verify Package
         run: |
           python -m twine check dist/*
-          echo "Package structure:"
-          unzip -l dist/*.whl | head -20
-          
+          echo "Package files:"
+          ls -la dist/
+        
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
@@ -57,9 +62,8 @@ jobs:
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          
+        
       - name: Publish to PyPI
-        if: startsWith(github.ref, 'refs/tags/v3.')
         env:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
