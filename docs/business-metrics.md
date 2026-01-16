@@ -788,12 +788,6 @@ def send_monthly_report():
 
 ---
 
-## Further Reading
-
-- [Architecture Overview](./architecture.md) - How metrics fit in
-- [Self-Healing Patterns](./self-healing.md) - Automated recovery
-- [API Reference](./api.md) - Business metrics APIs
-
 ---
 
 **Built by [LGCY Labs](https://lgcylabs.vercel.app/) | [Back to README](../README.md)**
