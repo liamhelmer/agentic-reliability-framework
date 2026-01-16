@@ -12,7 +12,6 @@
 
 [![PyPI version](https://img.shields.io/pypi/v/agentic-reliability-framework?style=for-the-badge&logo=pypi&logoColor=white)](https://pypi.org/project/agentic-reliability-framework/)
 [![Python Versions](https://img.shields.io/pypi/pyversions/agentic-reliability-framework?style=for-the-badge&logo=python&logoColor=white)](https://pypi.org/project/agentic-reliability-framework/)
-![OSS Tests](https://github.com/petterjuan/agentic-reliability-framework/actions/workflows/tests.yml/badge.svg)
 ![Comprehensive Tests](https://github.com/petterjuan/agentic-reliability-framework/actions/workflows/oss_tests.yml/badge.svg)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=for-the-badge&logo=apache&logoColor=white)](./LICENSE)
 [![HuggingFace](https://img.shields.io/badge/%F0%9F%A4%97-Live%20Demo-yellow?style=for-the-badge&logo=huggingface&logoColor=white)](https://huggingface.co/spaces/petter2025/agentic-reliability-framework)
@@ -106,6 +105,10 @@ The open-source edition of the Agentic Reliability Framework is designed for **a
 
 **OSS Advisory Flow (Advisory-Only)**
 
+**Key:** 
+**🟢 Green = OSS Advisory Capabilities**
+**🔵 Blue = Enterprise Execution (not included in OSS)**
+
 ```mermaid
 flowchart LR
     A[Detection 🟢 OSS] --> B[Recall 🟢 OSS]
@@ -118,9 +121,7 @@ flowchart LR
 
 ```
 
-**Key:** 
-**🟢 Green = OSS Advisory Capabilities**
-**🔵 Blue = Enterprise Execution (not included in OSS)**
+
 
 *   **Detection** – Identify anomalies and operational events in real time
     
