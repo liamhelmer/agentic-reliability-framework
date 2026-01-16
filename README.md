@@ -92,7 +92,7 @@ The open-source edition of the Agentic Reliability Framework is designed for **a
     
 *   **Multi-Stage Analysis Pipeline** Performs detection, diagnosis, and predictive reasoning to assess incident context, potential causes, and downstream risk.
     
-*   **Historical Pattern Recall** Identifies similar past incidents using vector-based similarity techniques to surface precedent and comparative outcomes.
+*   **Historical Pattern Recall** Identifies similar past incidents using graph-based similarity techniques to surface precedent and comparative outcomes.
     
 *   **Advisory Planning Output** Produces structured, immutable remediation plans that describe _what could be done_, _why_, and _with what expected impact_—without taking action.
     
