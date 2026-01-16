@@ -76,6 +76,27 @@ But the real business loss happens between:
 
 ARF collapses that gap by providing a hybrid intelligence system that advises safely in OSS and executes deterministically in Enterprise. 
 
+Why This Matters:
+
+Unlike commercial solutions:
+
+• Apache 2.0 licensed - Free, forever
+
+• Self-hostable - Your infrastructure, your data
+
+• Open source - See the code, trust the logic
+
+• Purpose-built - Not a bolt-on feature
+
+Unlike other open-source frameworks:
+
+• Production-ready NOW - Clone → Run → Works (5 minutes)
+
+• End-to-end autonomy - Full detect-diagnose-predict-heal cycle *Available for Enterprises
+
+• Business impact tracking - Revenue loss calculations, ROI metrics
+
+> The Vision: AI infrastructure should operate like critical infrastructure: predictable, observable, and reliably helpful. Not reacting to failures. Preventing them.
 ---
 
 🎯 What This Actually Does
@@ -105,33 +126,19 @@ The open-source edition of the Agentic Reliability Framework is designed for **a
 
 **OSS Advisory Flow (Advisory-Only)**
 
-**Key:** 
-**🟢 Green = OSS Advisory Capabilities**
-**🔵 Blue = Enterprise Execution (not included in OSS)**
-
-```mermaid
-flowchart LR
-    A[Detection 🟢 OSS] --> B[Recall 🟢 OSS]
-    B --> C[Decision 🟢 OSS]
-    C --> D[HealingIntent 🟢 OSS]
-    D --> E[Execution 🔵 Enterprise Only]
-
-    %% Optional: Dashed line for Enterprise-only node
-    E -.->|Enterprise-only| D
-
-```
+> **🟢 Green = OSS Advisory Capabilities**
+> **🔵 Blue = Enterprise Execution (not included in OSS)**
 
 
-
-*   **Detection** – Identify anomalies and operational events in real time
+*   **Detection** – Identify anomalies and operational events in real time 🟢
     
-*   **Recall** – Retrieve historical incidents and context for informed reasoning
+*   **Recall** – Retrieve historical incidents and context for informed reasoning 🟢
     
-*   **Decision** – Apply deterministic, explainable rules for advisory guidance
+*   **Decision** – Apply deterministic, explainable rules for advisory guidance 🟢
     
-*   **HealingIntent** – Generate structured, safe remediation recommendations
+*   **HealingIntent** – Generate structured, safe remediation recommendations 🟢
     
-*   **Execution** – Enterprise-only; OSS stops before this step
+*   **Execution** – Enterprise-only; OSS stops before this step 🔵
 
 | Feature                                  | OSS 🟢 | Enterprise 🔵 |
 | ---------------------------------------- | :----: | :-----------: |
@@ -150,13 +157,13 @@ flowchart LR
 
 ### Explicit OSS Constraints (By Design)
 
-*   **Advisory-Only**The OSS edition never executes changes, deploys fixes, or mutates production systems.
+*   **Advisory-Only** The OSS edition never executes changes, deploys fixes, or mutates production systems.
     
-*   **No Autonomous Learning**Historical data is used for recall and comparison only; the system does not self-train or update models over time.
+*   **No Autonomous Learning** Historical data is used for recall and comparison only; the system does not self-train or update models over time.
     
-*   **No Persistent Storage**Incident context and memory are ephemeral and capped to prevent long-term retention.
+*   **No Persistent Storage** Incident context and memory are ephemeral and capped to prevent long-term retention.
     
-*   **Single-Context Operation**No multi-tenant isolation, enterprise policy layering, or cross-environment orchestration.
+*   **Single-Context Operation** No multi-tenant isolation, enterprise policy layering, or cross-environment orchestration.
     
 ### Intended Use Cases
 
@@ -168,7 +175,8 @@ flowchart LR
     
 *   Safety-constrained AI planning demonstrations
     
-*   Evaluation of agent reasoning quality without execution risk   
+*   Evaluation of agent reasoning quality without execution risk
+
 
 ### Architectural Guarantees
 
