@@ -7,7 +7,10 @@ import asyncio
 import logging
 import time
 import uuid
+import json
+import re
 from typing import Dict, Any, Optional, List
+from collections import OrderedDict
 
 from ..arf_core.constants import (
     MCP_MODES_ALLOWED,
@@ -118,10 +121,13 @@ class OSSMCPClient:
             "requests_processed": 0,
             "healing_intents_created": 0,
             "avg_analysis_time_ms": 0.0,
+            "validation_errors": 0,
+            "cache_evictions": 0,
         }
         
-        # Cache for similar incidents
-        self.similarity_cache: Dict[str, Dict[str, Any]] = {}
+        # Cache for similar incidents - FIXED: Use OrderedDict with size limit
+        self.similarity_cache: OrderedDict[str, Dict[str, Any]] = OrderedDict()
+        self.max_cache_size = 100  # Security limit to prevent memory exhaustion
         
         logger.info(f"Initialized OSSMCPClient in {self.mode} mode")
         logger.info(f"OSS Edition: {get_oss_capabilities()['edition']}")
@@ -183,15 +189,21 @@ class OSSMCPClient:
         self.metrics["requests_processed"] += 1
         
         try:
-            # Validate request
+            # Validate request with enhanced security
             validation = self._validate_request(request_dict)
             if not validation["valid"]:
+                self.metrics["validation_errors"] += 1
+                logger.warning(f"Request validation failed: {validation['errors']}")
                 return OSSMCPResponse(
                     request_id=request_dict.get("request_id", str(uuid.uuid4())),
                     status="rejected",
                     message=f"Validation failed: {', '.join(validation['errors'])}",
                     executed=False,
                 ).to_dict()
+            
+            # SECURITY FIX: Validate and sanitize parameters before processing
+            sanitized_params = self._sanitize_parameters(request_dict.get("parameters", {}))
+            request_dict["parameters"] = sanitized_params
             
             # Perform OSS analysis
             analysis = await self._analyze_request(request_dict)
@@ -200,7 +212,7 @@ class OSSMCPClient:
             intent = HealingIntent.from_analysis(
                 action=request_dict["tool"],
                 component=request_dict["component"],
-                parameters=request_dict.get("parameters", {}),
+                parameters=sanitized_params,
                 justification=request_dict.get("justification", ""),
                 confidence=analysis["confidence"],
                 similar_incidents=analysis.get("similar_incidents"),
@@ -250,7 +262,7 @@ class OSSMCPClient:
             ).to_dict()
     
     def _validate_request(self, request: Dict[str, Any]) -> Dict[str, Any]:
-        """Validate MCP request"""
+        """Validate MCP request with enhanced security checks"""
         errors = []
         warnings = []
         
@@ -260,8 +272,18 @@ class OSSMCPClient:
         elif request["tool"] not in self.registered_tools:
             errors.append(f"Unknown tool: {request['tool']}")
         
+        # SECURITY FIX: Validate component name format
         if "component" not in request:
             errors.append("Missing required field: component")
+        else:
+            component = request["component"]
+            # Validate component name (alphanumeric, hyphens, underscores only)
+            if not isinstance(component, str):
+                errors.append("Component must be a string")
+            elif not re.match(r'^[a-zA-Z0-9-_]+$', component):
+                errors.append(f"Invalid component name: {component}. Must contain only letters, numbers, hyphens, and underscores")
+            elif len(component) > 255:
+                errors.append(f"Component name too long (max 255 characters): {len(component)}")
         
         # Check execution attempts
         if request.get("mode", "advisory") != "advisory":
@@ -271,6 +293,28 @@ class OSSMCPClient:
         justification = request.get("justification", "")
         if len(justification) < 10:
             warnings.append("Justification is brief (minimum 10 characters recommended)")
+        elif len(justification) > 10000:
+            errors.append(f"Justification too long (max 10000 characters): {len(justification)}")
+        
+        # SECURITY FIX: Validate parameters structure
+        parameters = request.get("parameters", {})
+        if not isinstance(parameters, dict):
+            errors.append(f"Parameters must be a dictionary, got: {type(parameters)}")
+        else:
+            # Check for excessively large parameters
+            try:
+                param_str = json.dumps(parameters)
+                if len(param_str) > 100000:  # 100KB limit
+                    errors.append(f"Parameters too large (max 100KB): {len(param_str)} bytes")
+            except (TypeError, ValueError) as e:
+                errors.append(f"Invalid parameters format: {e}")
+        
+        # SECURITY FIX: Validate request_id if provided
+        request_id = request.get("request_id", "")
+        if request_id and not isinstance(request_id, str):
+            errors.append(f"Request ID must be a string, got: {type(request_id)}")
+        elif request_id and len(request_id) > 100:
+            errors.append(f"Request ID too long (max 100 characters): {len(request_id)}")
         
         return {
             "valid": len(errors) == 0,
@@ -278,16 +322,66 @@ class OSSMCPClient:
             "warnings": warnings,
         }
     
+    def _sanitize_parameters(self, parameters: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Sanitize parameters to prevent injection attacks
+        
+        Args:
+            parameters: Raw parameters dictionary
+            
+        Returns:
+            Sanitized parameters dictionary
+        """
+        if not isinstance(parameters, dict):
+            return {}
+        
+        sanitized = {}
+        for key, value in parameters.items():
+            # Limit key length
+            if not isinstance(key, str):
+                continue
+            if len(key) > 100:
+                logger.warning(f"Parameter key too long, truncating: {key}")
+                key = key[:100]
+            
+            # Sanitize value based on type
+            if isinstance(value, (int, float, bool, type(None))):
+                sanitized[key] = value
+            elif isinstance(value, str):
+                # Limit string length and remove control characters
+                if len(value) > 10000:
+                    logger.warning(f"Parameter value too long, truncating: {key}")
+                    value = value[:10000]
+                # Remove control characters (except newline, tab)
+                value = re.sub(r'[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]', '', value)
+                sanitized[key] = value
+            elif isinstance(value, list):
+                # Recursively sanitize list items (limit to 100 items)
+                sanitized_list = []
+                for i, item in enumerate(value[:100]):  # Limit list size
+                    if isinstance(item, (int, float, bool, str, type(None))):
+                        if isinstance(item, str) and len(item) > 1000:
+                            item = item[:1000]  # Limit string length in lists
+                        sanitized_list.append(item)
+                sanitized[key] = sanitized_list
+            elif isinstance(value, dict):
+                # Recursively sanitize nested dicts (limit depth)
+                sanitized[key] = self._sanitize_parameters(value)
+        
+        return sanitized
+    
     async def _analyze_request(self, request: Dict[str, Any]) -> Dict[str, Any]:
         """Perform OSS analysis on request"""
         tool_name = request["tool"]
         component = request["component"]
         parameters = request.get("parameters", {})
         
-        # Check cache first
-        cache_key = self._create_cache_key(tool_name, component, parameters)
+        # Check cache first with enhanced cache key
+        cache_key = self._create_safe_cache_key(tool_name, component, parameters)
         if cache_key in self.similarity_cache:
             cached = self.similarity_cache[cache_key]
+            # Move to end (most recently used)
+            self.similarity_cache.move_to_end(cache_key)
             return {**cached, "cache_hit": True}
         
         # Simulate RAG similarity search
@@ -313,10 +407,16 @@ class OSSMCPClient:
             "cache_hit": False,
         }
         
-        # Cache result (LRU cache)
+        # Cache result with LRU eviction
         self.similarity_cache[cache_key] = result
-        if len(self.similarity_cache) > 100:
-            self.similarity_cache.pop(next(iter(self.similarity_cache)))
+        self.similarity_cache.move_to_end(cache_key)
+        
+        # Enforce cache size limit
+        if len(self.similarity_cache) > self.max_cache_size:
+            oldest_key = next(iter(self.similarity_cache))
+            self.similarity_cache.popitem(last=False)
+            self.metrics["cache_evictions"] += 1
+            logger.debug(f"Cache evicted oldest entry: {oldest_key}")
         
         return result
     
@@ -421,16 +521,60 @@ class OSSMCPClient:
         
         return min(base_confidence, 1.0)
     
+    def _create_safe_cache_key(
+        self, 
+        tool: str, 
+        component: str, 
+        parameters: Dict[str, Any]
+    ) -> str:
+        """
+        Create safe cache key for similarity search
+        
+        SECURITY FIX: Validates and sanitizes input before creating cache key
+        """
+        # Validate tool name
+        if tool not in self.registered_tools:
+            raise ValueError(f"Invalid tool: {tool}")
+        
+        # Validate component name
+        if not isinstance(component, str) or len(component) > 255:
+            raise ValueError(f"Invalid component: {component}")
+        
+        # Use safe parameters (already sanitized)
+        safe_params = self._sanitize_parameters(parameters)
+        
+        # Create deterministic cache key
+        try:
+            param_str = json.dumps(safe_params, sort_keys=True)
+            # Add length limit for safety
+            if len(param_str) > 10000:
+                param_str = param_str[:10000]
+            
+            # Create hash-based key
+            import hashlib
+            param_hash = hashlib.md5(param_str.encode()).hexdigest()[:16]
+            cache_key = f"{tool}:{component}:{param_hash}"
+            
+            # Limit cache key length
+            if len(cache_key) > 1000:
+                cache_key = cache_key[:1000]
+            
+            return cache_key
+        except (TypeError, ValueError) as e:
+            logger.warning(f"Error creating cache key: {e}")
+            # Fallback to simple key
+            return f"{tool}:{component}:fallback"
+    
+    # Backward compatibility method (deprecated)
     def _create_cache_key(
         self, 
         tool: str, 
         component: str, 
         parameters: Dict[str, Any]
     ) -> str:
-        """Create cache key for similarity search"""
-        import json
-        param_str = json.dumps(parameters, sort_keys=True)
-        return f"{tool}:{component}:{hash(param_str)}"
+        """DEPRECATED: Use _create_safe_cache_key instead"""
+        logger.warning("_create_cache_key is deprecated, use _create_safe_cache_key")
+        return self._create_safe_cache_key(tool, component, parameters)
     
     def get_client_stats(self) -> Dict[str, Any]:
         """Get OSS MCP client statistics"""
@@ -441,6 +585,9 @@ class OSSMCPClient:
             "registered_tools": len(self.registered_tools),
             "metrics": self.metrics,
             "cache_size": len(self.similarity_cache),
+            "max_cache_size": self.max_cache_size,
+            "cache_evictions": self.metrics["cache_evictions"],
+            "validation_errors": self.metrics["validation_errors"],
             "oss_edition": True,
             "capabilities": capabilities,
             "config": self.config,
