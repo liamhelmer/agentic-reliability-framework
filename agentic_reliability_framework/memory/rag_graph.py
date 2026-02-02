@@ -9,6 +9,7 @@ import logging
 import hashlib
 import json
 import time
+import os  # ADDED: For path validation
 from typing import Dict, List, Any, Optional, Union, cast, TypedDict
 from datetime import datetime
 from collections import OrderedDict
@@ -959,6 +960,30 @@ class RAGGraphMemory:
     def export_graph(self, filepath: str) -> bool:
         """Export graph to JSON file with proper error handling"""
         try:
+            # ====== SECURITY FIX: PATH TRAVERSAL PREVENTION ======
+            # 1. Validate file extension
+            if not filepath.endswith('.json'):
+                raise ValueError("File must have .json extension")
+            
+            # 2. Prevent directory traversal attacks
+            if '..' in filepath or filepath.startswith('/'):
+                raise ValueError("Invalid file path: directory traversal not allowed")
+            
+            # 3. Restrict to safe export directory
+            safe_dir = os.path.join(os.getcwd(), 'exports')
+            # Get only the filename, not the path
+            filename = os.path.basename(filepath)
+            # Ensure filename doesn't contain path separators
+            if '/' in filename or '\\' in filename:
+                raise ValueError("Invalid filename: contains path separators")
+            
+            # 4. Construct safe path
+            safe_filepath = os.path.join(safe_dir, filename)
+            
+            # 5. Create directory with safe permissions (owner only)
+            os.makedirs(safe_dir, mode=0o700, exist_ok=True)
+            # ====== END SECURITY FIX ======
+            
             with self._transaction():
                 data: Dict[str, Any] = {
                     "version": "v3.0",
@@ -976,14 +1001,11 @@ class RAGGraphMemory:
                     "faiss_mapping_size": len(self._faiss_to_incident)
                 }
             
-            # Ensure directory exists
-            import os
-            os.makedirs(os.path.dirname(os.path.abspath(filepath)), exist_ok=True)
-            
-            with open(filepath, 'w', encoding='utf-8') as f:
+            # Use safe filepath instead of original
+            with open(safe_filepath, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=2, default=str)
             
-            logger.info(f"Exported RAG graph to {filepath}: {len(data['incident_nodes'])} incidents")
+            logger.info(f"Exported RAG graph to {safe_filepath}: {len(data['incident_nodes'])} incidents")
             return True
             
         except Exception as e:
