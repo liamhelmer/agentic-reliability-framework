@@ -179,31 +179,45 @@ class EnhancedRAGGraphMemory:
                 return self._embedding_cache[cache_key]
         
         try:
-            # Extract features
+            # ====== SECURITY FIX: MEMORY SAFETY ======
+            # Limit feature extraction to prevent memory exhaustion
+            MAX_FEATURES = 1000  # Maximum features to extract
             features: List[float] = []
             
-            # Add numerical features
+            # Add numerical features with bounds checking
             if hasattr(event, 'latency_p99'):
-                features.append(float(event.latency_p99) / 1000.0)
+                # Cap latency at reasonable maximum (1 hour = 3,600,000 ms)
+                latency = min(float(event.latency_p99), 3_600_000.0)
+                features.append(latency / 1000.0)  # Normalize to seconds
             else:
                 features.append(0.0)
             
             if hasattr(event, 'error_rate'):
-                features.append(float(event.error_rate))
+                # Error rate should be 0-1
+                error_rate = max(0.0, min(1.0, float(event.error_rate)))
+                features.append(error_rate)
             else:
                 features.append(0.0)
             
             if hasattr(event, 'throughput'):
-                features.append(float(event.throughput) / 10000.0)
+                # Cap throughput at reasonable maximum (1M requests/sec)
+                throughput = min(float(event.throughput), 1_000_000.0)
+                features.append(throughput / 10000.0)  # Normalize
             else:
                 features.append(0.0)
             
             if hasattr(event, 'cpu_util'):
-                features.append(float(event.cpu_util) if event.cpu_util is not None else 0.0)
+                cpu_util = event.cpu_util
+                if cpu_util is not None:
+                    # CPU utilization should be 0-1
+                    cpu_util = max(0.0, min(1.0, float(cpu_util)))
+                    features.append(cpu_util)
+                else:
+                    features.append(0.0)
             else:
                 features.append(0.0)
             
-            # Add categorical features as embeddings
+            # Add categorical features as embeddings with bounds
             if hasattr(event, 'severity'):
                 severity_value = getattr(event.severity, 'value', "low")
                 severity_map = {"low": 0.1, "medium": 0.3, "high": 0.7, "critical": 1.0}
@@ -212,36 +226,64 @@ class EnhancedRAGGraphMemory:
                 features.append(0.1)
             
             if hasattr(event, 'component'):
-                component_hash = int(hashlib.md5(event.component.encode()).hexdigest()[:8], 16) / 2**32
+                # Hash component name for embedding, limit length
+                component_name = str(event.component)[:255]  # Limit component name length
+                component_hash = int(hashlib.md5(component_name.encode()).hexdigest()[:8], 16) / 2**32
                 features.append(component_hash)
             else:
                 features.append(0.0)
             
-            # Add analysis confidence
+            # Add analysis confidence with bounds
             confidence = analysis.get("incident_summary", {}).get("anomaly_confidence", 0.5)
-            features.append(float(confidence))
+            confidence = max(0.0, min(1.0, float(confidence)))
+            features.append(confidence)
             
-            # Pad or truncate to target dimension
+            # ====== MEMORY EXHAUSTION PROTECTION ======
+            # 1. Limit total features
+            if len(features) > MAX_FEATURES:
+                logger.warning(f"Too many features ({len(features)}), truncating to {MAX_FEATURES}")
+                features = features[:MAX_FEATURES]
+            
+            # 2. Pad or truncate to target dimension with validation
             target_dim = self.VECTOR_DIM
+            if target_dim > 4096:  # Security limit: max 4096 dimensions
+                logger.warning(f"Vector dimension too large ({target_dim}), limiting to 4096")
+                target_dim = 4096
+            
             if len(features) < target_dim:
                 features.extend([0.0] * (target_dim - len(features)))
             else:
                 features = features[:target_dim]
             
+            # 3. Create numpy array with explicit dtype and bounds
             embedding = np.array(features, dtype=np.float32)
+            
+            # 4. Validate array size (prevent huge allocations)
+            max_array_size = 100000  # 100KB limit for embeddings
+            if embedding.size > max_array_size:
+                logger.error(f"Embedding array too large: {embedding.size} elements")
+                raise MemoryError(f"Embedding array exceeds size limit: {embedding.size} > {max_array_size}")
+            
+            # 5. Normalize safely
             norm = np.linalg.norm(embedding)
             if norm > 0:
                 embedding = embedding / norm
             
-            # Cache embedding
+            # Cache embedding with size limits
             with self._transaction():
                 self._embedding_cache[cache_key] = embedding
                 if len(self._embedding_cache) > self._max_embedding_cache_size:
                     oldest_key = next(iter(self._embedding_cache))
                     del self._embedding_cache[oldest_key]
+            # ====== END SECURITY FIX ======
             
             return embedding
             
+        except MemoryError as e:
+            logger.error(f"Memory error creating embedding: {e}")
+            # Return safe zero vector
+            safe_dim = min(384, self.VECTOR_DIM)  # Use smaller safe dimension
+            return np.zeros(safe_dim, dtype=np.float32)
         except Exception as e:
             logger.error(f"Embedding error: {e}", exc_info=True)
             return np.zeros(self.VECTOR_DIM, dtype=np.float32)
@@ -1275,13 +1317,36 @@ class V3ReliabilityEngine(BaseV3Engine):
                 "oss_edition": getattr(config, 'is_oss_edition', True),
             }
         
+        # ====== SECURITY FIX: INFORMATION DISCLOSURE PREVENTION ======
+        # Limit RAG graph statistics to prevent information disclosure
+        safe_rag_stats = None
+        if self.rag:
+            full_rag_stats = self.rag.get_graph_stats()
+            # Only expose non-sensitive information
+            safe_rag_stats = {
+                "incident_nodes": full_rag_stats.get("incident_nodes", 0),
+                "outcome_nodes": full_rag_stats.get("outcome_nodes", 0),
+                "edges": full_rag_stats.get("edges", 0),
+                "component_distribution": full_rag_stats.get("component_distribution", {}),
+                "v3_enabled": full_rag_stats.get("v3_enabled", False),
+                "is_operational": full_rag_stats.get("is_operational", False),
+                # DO NOT expose:
+                # - cache sizes
+                # - cache hit rates  
+                # - memory layout
+                # - circuit breaker details
+                # - internal failure counts
+                # - embedding cache details
+            }
+        # ====== END SECURITY FIX ======
+        
         # Combine stats
         combined_stats: Dict[str, Any] = {
             **base_stats,
             "engine_version": "v3_enhanced_oss",
             "v3_features": v3_stats["v3_features_active"],
             "v3_metrics": v3_stats,
-            "rag_graph_stats": self.rag.get_graph_stats() if self.rag else None,
+            "rag_graph_stats": safe_rag_stats,  # Use safe stats instead of full stats
             "learning_boundary": {
                 "oss_learning": False,
                 "enterprise_learning": False,  # OSS never has Enterprise learning
@@ -1304,7 +1369,21 @@ class V3ReliabilityEngine(BaseV3Engine):
         
         # Add MCP stats if available
         if self.mcp and hasattr(self.mcp, 'get_server_stats'):
-            combined_stats["mcp_server_stats"] = self.mcp.get_server_stats()
+            mcp_stats = self.mcp.get_server_stats()
+            # Sanitize MCP stats to prevent information disclosure
+            safe_mcp_stats = {
+                "mode": mcp_stats.get("mode", "advisory"),
+                "edition": mcp_stats.get("edition", "oss"),
+                "registered_tools": mcp_stats.get("registered_tools", 0),
+                "execution_allowed": mcp_stats.get("execution_allowed", False),
+                "uptime_seconds": mcp_stats.get("uptime_seconds", 0),
+                # DO NOT expose:
+                # - tool statistics
+                # - execution history
+                # - cooldown details
+                # - cache sizes
+            }
+            combined_stats["mcp_server_stats"] = safe_mcp_stats
         
         return combined_stats
     
