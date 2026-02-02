@@ -8,6 +8,7 @@ import asyncio
 import logging
 import time
 import uuid
+import re  # ADDED: For regex validation
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -739,15 +740,53 @@ class MCPServer:
         """Create MCPRequest from dictionary with validation"""
         # OSS EDITION: Always advisory mode
         mode = MCPMode.ADVISORY
+        
+        # ====== SECURITY FIX: INPUT VALIDATION ======
+        # 1. Validate tool name
+        tool = request_dict.get("tool", "")
+        if not tool or tool not in self.registered_tools:
+            raise ValueError(f"Invalid tool: {tool}. Must be one of: {list(self.registered_tools.keys())}")
+        
+        # 2. Validate component name (alphanumeric, hyphens, underscores only)
+        component = request_dict.get("component", "")
+        if not component:
+            raise ValueError("Component name is required")
+        if not re.match(r'^[a-zA-Z0-9-_]+$', component):
+            raise ValueError(f"Invalid component name: {component}. Must contain only letters, numbers, hyphens, and underscores")
+        if len(component) > 255:
+            raise ValueError(f"Component name too long (max 255 characters): {len(component)}")
+        
+        # 3. Validate justification length
+        justification = request_dict.get("justification", "")
+        if len(justification) > 10000:
+            raise ValueError(f"Justification too long (max 10000 characters): {len(justification)}")
+        
+        # 4. Validate parameters is a dictionary
+        parameters = request_dict.get("parameters", {})
+        if not isinstance(parameters, dict):
+            raise ValueError(f"Parameters must be a dictionary, got: {type(parameters)}")
+        
+        # 5. Validate metadata is a dictionary
+        metadata = request_dict.get("metadata", {})
+        if not isinstance(metadata, dict):
+            raise ValueError(f"Metadata must be a dictionary, got: {type(metadata)}")
+        
+        # 6. Validate request_id format if provided
+        request_id = request_dict.get("request_id", str(uuid.uuid4()))
+        if not isinstance(request_id, str):
+            raise ValueError(f"Request ID must be a string, got: {type(request_id)}")
+        if len(request_id) > 100:
+            raise ValueError(f"Request ID too long (max 100 characters): {len(request_id)}")
+        # ====== END SECURITY FIX ======
 
         return MCPRequest(
-            request_id=request_dict.get("request_id", str(uuid.uuid4())),
-            tool=request_dict["tool"],
-            component=request_dict["component"],
-            parameters=request_dict.get("parameters", {}),
-            justification=request_dict.get("justification", ""),
+            request_id=request_id,
+            tool=tool,
+            component=component,
+            parameters=parameters,
+            justification=justification,
             mode=mode,
-            metadata=request_dict.get("metadata", {})
+            metadata=metadata
         )
 
     def _validate_request(self, request: MCPRequest) -> Dict[str, Any]:
